@@ -1,7 +1,7 @@
---[[ EXACT Lunara_UI_Only + features AFTER print ready ]]
+--[[ EXACT Lunara_UI_Only + Standard RageBot (Emote Removed) ]]
 _G.HUB = _G.HUB or {
 	Aimbot = false, AimSmooth = 0.3, AimFOV = 300, SilentAim = false, Triggerbot = false,
-	TrigFOV = 120, ShowFOV = false, Rage = false, Wallbang = false, Ragebot2 = false,
+	TrigFOV = 120, ShowFOV = false, Wallbang = false,
 	VoidSpam = false, Desync = false, AutoReload = false, HitNotify = false, HitSound = false,
 	AntiFlash = false, AntiSmoke = false, CustomCrosshair = false, ShowSpectators = false,
 	ESP = false, ESP_Name = false, ESP_HealthBar = false, ESP_Distance = false,
@@ -9,15 +9,11 @@ _G.HUB = _G.HUB or {
 	LevelSpoof = false, Level = 9999, WinStreakSpoof = false, WinStreak = 9999,
 	DeviceSpoof = false, DeviceName = "PC", Noclip = false, UnlockAll = false,
 	Fly = false, FlySpeed = 60, TeamCheck = true, WallCheck = true,
-	RapidFire = false, NoRecoil = false, NoSpread = false, RageInterval = 0.55,
+	RapidFire = false, NoRecoil = false, NoSpread = false,
 	WalkSpeed = false, WalkSpeedValue = 45, Freecam = false, FreecamSpeed = 50,
+	RageBot = false, RageMode = "gun",
 }
 local S = _G.HUB
-
---[[ Lunara UI only â€” extracted from remecide loader / backscript ]]
--- Original obfuscated file only loaded:
---   https://raw.githubusercontent.com/thegop7y-ui/Lunara-backscript/.../Lunara-backscript.txt
--- That file uses LinoriaLib for UI.
 
 local repo = "https://raw.githubusercontent.com/mstudio45/LinoriaLib/main/"
 local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
@@ -45,6 +41,7 @@ local Tabs = {
 	Character = Window:AddTab("Character"),
 	Visuals = Window:AddTab("Visuals"),
 	Misc = Window:AddTab("Misc"),
+	Rage = Window:AddTab("RageBot"),
 	Settings = Window:AddTab("Settings"),
 }
 
@@ -63,9 +60,6 @@ local FireBox = Tabs.Combat:AddRightGroupbox("Weapon")
 FireBox:AddToggle("NoCooldown", { Text = "Rapid Fire", Default = false, Callback = function(v) S.RapidFire = v end })
 FireBox:AddToggle("NoSpread", { Text = "No Spread", Default = false, Callback = function(v) S.NoSpread = v end })
 FireBox:AddToggle("NoRecoil", { Text = "No Recoil", Default = false, Callback = function(v) S.NoRecoil = v end })
-FireBox:AddToggle("Rage", { Text = "Ragebot", Default = false, Callback = function(v) S.Rage = v end })
-FireBox:AddToggle("Ragebot2", { Text = "Ragebot 2", Default = false, Callback = function(v) S.Ragebot2 = v end })
-FireBox:AddSlider("RageInterval", { Text = "Immunity Wait (s)", Default = 0.5, Min = 0.5, Max = 2, Rounding = 2, Callback = function(v) S.RageInterval = v end })
 FireBox:AddToggle("HitNotify", { Text = "Hit Notify", Default = false, Callback = function(v) S.HitNotify = v end })
 FireBox:AddToggle("HitSound", { Text = "Hit Sound", Default = false, Callback = function(v) S.HitSound = v end })
 
@@ -106,7 +100,6 @@ UtilBox:AddToggle("ShowSpectators", { Text = "Spectators", Default = false, Call
 local UnlockBox = Tabs.Misc:AddLeftGroupbox("Unlock")
 UnlockBox:AddToggle("UnlockAll", { Text = "Unlock All", Default = false, Callback = function(v) S.UnlockAll = v; pcall(function() if v and runLunaraUnlockAll then runLunaraUnlockAll() end end) end })
 UnlockBox:AddButton("Server Hop", function() pcall(function() if doServerHop then doServerHop() end end) end)
-UnlockBox:AddButton("Play Emote", function() pcall(function() if runEmote then runEmote() end end) end)
 
 local DeviceBox = Tabs.Misc:AddRightGroupbox("Device")
 DeviceBox:AddToggle("DeviceSpoof", { Text = "Device Spoof", Default = false, Callback = function(v) S.DeviceSpoof = v; pcall(function() if v and applyDeviceSpoof then applyDeviceSpoof(true) elseif not v and restoreRealDevice then restoreRealDevice() end end) end })
@@ -115,6 +108,11 @@ DeviceBox:AddDropdown("DeviceName", {
 	Callback = function(v) S.DeviceName = v; pcall(function() if S.DeviceSpoof and applyDeviceSpoof then applyDeviceSpoof(true) end end) end,
 })
 DeviceBox:AddToggle("AntiAFK", { Text = "Anti AFK", Default = false, Callback = function(v) S.AntiAFK = v end })
+
+-- Rage Tab (Standard RageBot Controls)
+local RageBox = Tabs.Rage:AddLeftGroupbox("RageBot")
+RageBox:AddToggle("RageBotSwitch", { Text = "Rage Bot", Default = false, Callback = function(v) S.RageBot = v; runRageBot() end })
+RageBox:AddToggle("RageModeToggle", { Text = "Attack Type: Gun (Off = Melee)", Default = true, Callback = function(v) S.RageMode = v and "gun" or "melee"; if S.RageBot then runRageBot() end end })
 
 -- Settings
 local MenuBox = Tabs.Settings:AddLeftGroupbox("Menu")
@@ -136,8 +134,235 @@ end)
 Library:Notify(utf8.char(0xD050, 0xAC78) .. " " .. utf8.char(0xB098, 0xB2E4) .. " hub free v1" .. " ready", 3)
 print("[UI] ready")
 
+-- Automatic Anti-Cheat Bypass Setup
+function applyAutoBypass()
+	pcall(function()
+		local mt = getrawmetatable(game)
+		if mt then
+			setreadonly(mt, false)
+			local old_namecall = mt.__namecall
+			mt.__namecall = newcclosure(function(self, ...)
+				local method = getnamecallmethod()
+				if method == "Kick" or method == "Ban" then
+					return
+				end
+				return old_namecall(self, ...)
+			end)
+			setreadonly(mt, true)
+		end
+	end)
+	pcall(function()
+		for _, v in pairs(game:GetService("CoreGui"):GetChildren()) do
+			if v.Name == "RobloxPromptGui" then
+				local prompt = v:FindFirstChild("promptOverlay", true)
+				if prompt then prompt.Visible = false end
+			end
+		end
+	end)
+end
+applyAutoBypass()
 
--- features AFTER UI (cannot affect CreateWindow)
+function runRageBot()
+	if getgenv().__s9t0u1 then
+		pcall(function() getgenv().__s9t0u1:Shutdown() end)
+	end
+	if not S.RageBot then return end
+
+	if S.RageMode == "gun" then
+		local __a1b2c3 = setmetatable({}, {
+			__index = function(__d4e5f6, __g7h8i9)
+				local __j0k1l2, __m3n4o5 = pcall(function()
+					return game:GetService(__g7h8i9)
+				end)
+				if __m3n4o5 then return cloneref(__m3n4o5) end
+				return nil
+			end
+		})
+
+		local __p6q7r8 = getgenv()
+		if __p6q7r8.__s9t0u1 then __p6q7r8.__s9t0u1:Shutdown() end
+
+		local __v2w3x4 = __a1b2c3.Players
+		local __y5z6a7 = __a1b2c3.RunService
+		local __b8c9d0 = __a1b2c3.ReplicatedStorage
+		local __e1f2g3 = __a1b2c3.Workspace
+		local __k7l8m9 = __v2w3x4.LocalPlayer
+		local __q3r4s5 = __k7l8m9.PlayerScripts
+		local __t6u7v8 = require(__q3r4s5.Modules.ItemTypes.Gun)
+		local __w9x0y1 = require(__b8c9d0.Modules.Utility)
+
+		local __z2a3b4 = setmetatable({}, {
+			__index = function(_, __c5d6e7)
+				local __f8g9h0 = __k7l8m9.Character
+				if not __f8g9h0 then return nil end
+				if __c5d6e7 == "__root" then
+					return __f8g9h0:FindFirstChild("HumanoidRootPart")
+				elseif __c5d6e7 == "__head" then
+					return __f8g9h0:FindFirstChild("Head")
+				end
+				return nil
+			end
+		})
+
+		__p6q7r8.__s9t0u1 = {}
+
+		do
+			local __i1j2k3 = __p6q7r8.__s9t0u1
+
+			function __i1j2k3:__init()
+				self.__active = true
+				self.__target = nil
+				self.__desync = false
+				self.__conn1 = nil
+				self.__conn2 = nil
+				self.__task1 = nil
+				self.__oldfunc = nil
+				self:__setup()
+			end
+
+			function __i1j2k3:__setup()
+				self.__conn1 = __y5z6a7.Heartbeat:Connect(function()
+					if not self.__active then return end
+					self.__target = self:__find()
+				end)
+
+				local __l4m5n6 = __t6u7v8.StartShooting
+				self.__oldfunc = __l4m5n6
+				__t6u7v8.StartShooting = function(__o7p8q9, ...)
+					local __r0s1t2 = {__l4m5n6(__o7p8q9, ...)}
+					if not __o7p8q9.ClientFighter or not __o7p8q9.ClientFighter.IsLocalPlayer then
+						return unpack(__r0s1t2)
+					end
+
+					local __u3v4w5 = __r0s1t2[3]
+					if not __u3v4w5 or typeof(__u3v4w5) ~= "table" then
+						return unpack(__r0s1t2)
+					end
+
+					__r0s1t2[4] = true
+					local __x6y7z8 = self.__target
+
+					if not self.__active or not __x6y7z8 or not __x6y7z8.Character then
+						return unpack(__r0s1t2)
+					end
+
+					if not self.__desync or self.__curr ~= __x6y7z8 then
+						self:__desync_start(__x6y7z8)
+						task.wait(0.1)
+					end
+
+					if self.__task1 then
+						task.cancel(self.__task1)
+						self.__task1 = nil
+					end
+
+					local __a9b0c1 = __x6y7z8.Character:FindFirstChild("Head")
+					if not __a9b0c1 then return unpack(__r0s1t2) end
+
+					local __d2e3f4 = __a9b0c1.Position
+					local __g5h6i7 = __a9b0c1.CFrame
+					local __j8k9l0 = __d2e3f4 - Vector3.new(0, 5, 0)
+					local __m1n2o3 = CFrame.lookAt(__j8k9l0, __d2e3f4)
+					local __p4q5r6 = __g5h6i7:ToObjectSpace(CFrame.new(__d2e3f4 + Vector3.new(math.random(), math.random(), math.random())))
+
+					__u3v4w5[utf8.char(0)] = __w9x0y1:EncodeCFrame(CFrame.new(__j8k9l0, __d2e3f4) * CFrame.Angles(__m1n2o3:ToOrientation()))
+					__u3v4w5[utf8.char(1)] = __w9x0y1:EncodeCFrame(CFrame.new(__d2e3f4) * CFrame.Angles(__m1n2o3:ToOrientation()))
+					__u3v4w5[utf8.char(2)] = __a9b0c1
+					__u3v4w5[utf8.char(3)] = __w9x0y1:EncodeCFrame(__p4q5r6)
+
+					self.__task1 = task.delay(0.15, function()
+						self:__desync_stop()
+					end)
+
+					return unpack(__r0s1t2)
+				end
+			end
+
+			function __i1j2k3:__find()
+				local myChar = __k7l8m9.Character
+				if not myChar then return nil end
+				local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+				if not myRoot then return nil end
+			   
+				local closest = nil
+				local closestDist = math.huge
+
+				for _, player in next, __v2w3x4:GetPlayers() do
+					if player == __k7l8m9 then continue end
+					if player:GetAttribute("TeamID") == __k7l8m9:GetAttribute("TeamID") then continue end
+				   
+					local char = player.Character
+					if not char then continue end
+
+					local root = char:FindFirstChild("HumanoidRootPart")
+					local head = char:FindFirstChild("Head")
+					local hum = char:FindFirstChildWhichIsA("Humanoid")
+					
+					if not (root and head and hum and hum.Health > 0) then continue end
+				   
+					local dist = (myRoot.Position - root.Position).Magnitude
+					if dist < closestDist then
+						closestDist = dist
+						closest = player
+					end
+				end
+				return closest
+			end
+
+			function __i1j2k3:__desync_start(__c3d4e5)
+				if self.__conn2 then self.__conn2:Disconnect() end
+				self.__desync = true
+				self.__curr = __c3d4e5
+
+				self.__conn2 = __y5z6a7.Heartbeat:Connect(function()
+					if not self.__desync then return end
+					local __f6g7h8 = __z2a3b4.__root
+					if not __f6g7h8 then return end
+
+					local __i9j0k1 = __c3d4e5.Character and __c3d4e5.Character:FindFirstChild("HumanoidRootPart")
+					if not __i9j0k1 then
+						self:__desync_stop()
+						return
+					end
+
+					local __l2m3n4 = __f6g7h8.CFrame
+					local __o5p6q7 = __f6g7h8.Velocity
+					local __r8s9t0 = __f6g7h8.RotVelocity
+
+					__f6g7h8.CFrame = __i9j0k1.CFrame * CFrame.new(0, -5, 0)
+
+					__y5z6a7:BindToRenderStep("__restore", 101, function()
+						__f6g7h8.CFrame = __l2m3n4
+						__f6g7h8.Velocity = __o5p6q7
+						__f6g7h8.RotVelocity = __r8s9t0
+						__y5z6a7:UnbindFromRenderStep("__restore")
+					end)
+				end)
+			end
+
+			function __i1j2k3:__desync_stop()
+				self.__desync = false
+				self.__curr = nil
+				if self.__conn2 then
+					self.__conn2:Disconnect()
+					self.__conn2 = nil
+				end
+			end
+
+			function __i1j2k3:Shutdown()
+				self.__active = false
+				if self.__conn1 then self.__conn1:Disconnect() end
+				if self.__conn2 then self.__conn2:Disconnect() end
+				if self.__task1 then task.cancel(self.__task1) end
+				if self.__oldfunc then __t6u7v8.StartShooting = self.__oldfunc end
+			end
+
+			__i1j2k3:__init()
+		end
+	end
+end
+
+-- Original Lunara Features Script execution block below
 task.defer(function()
 	local ok, err = pcall(function()
 local Players = game:GetService("Players")
@@ -151,7 +376,6 @@ local Cam = Workspace.CurrentCamera
 
 S = _G.HUB
 
--- Top-Edge Custom UI Box HitNotify (ScreenGui 기반)
 if CoreGui:FindFirstChild("CustomHitNotifyGui") then
     CoreGui.CustomHitNotifyGui:Destroy()
 end
@@ -207,7 +431,6 @@ local function showHitUI(text)
     end)
 end
 
--- Device spoof (Lunara: SetControls remote)
 local DEVICE_CFGS = {
 	Mobile = { Code = "Touch" },
 	Console = { Code = "Gamepad" },
@@ -290,7 +513,6 @@ LP.CharacterAdded:Connect(function()
 	end
 end)
 
--- Lunara Unlock All
 local unlockAllExecuted = false
 function runLunaraUnlockAll()
 	if unlockAllExecuted then
@@ -314,20 +536,6 @@ function runLunaraUnlockAll()
 	end)
 end
 
--- Emote helper function
-function runEmote()
-	pcall(function()
-		local remotes = RS:FindFirstChild("Remotes")
-		local rep = remotes and remotes:FindFirstChild("Replication")
-		local fighter = rep and rep:FindFirstChild("Fighter")
-		local emoteRemote = fighter and fighter:FindFirstChild("Emote") or fighter and fighter:FindFirstChild("PlayEmote")
-		if emoteRemote then
-			emoteRemote:FireServer("Default")
-		end
-	end)
-end
-
--- ========== AC (Lunara full) ==========
 pcall(function()
 	local _stbl
 	_stbl = hookfunction(getrenv().setmetatable, newcclosure(function(tbl, mt)
@@ -427,48 +635,6 @@ pcall(function()
 	end
 end)
 
-task.spawn(function()
-	task.wait(0.5)
-	pcall(function()
-		local rf = game:GetService("ReplicatedFirst")
-		local tgt = rf:FindFirstChild("LocalScript3") or rf:WaitForChild("LocalScript3", 10)
-		local ct = 0
-		local gc = getgc(false)
-		for i = 1, #gc do
-			if i % 300 == 0 then task.wait() end
-			local fn = gc[i]
-			if type(fn) == "function" then
-				local ok1, env = pcall(getfenv, fn)
-				if ok1 and type(env) == "table" then
-					local ok2, scr = pcall(function()
-						return rawget(env, "script")
-					end)
-					if ok2 and scr and typeof(scr) == "Instance" then
-						local ok3, ss = pcall(tostring, scr)
-						if ok3 and (scr == tgt or (type(ss) == "string" and string.find(ss, "LoadingScreen"))) then
-							local ok4, consts = pcall(debug.getconstants, fn)
-							if ok4 and type(consts) == "table" then
-								for j = 1, #consts do
-									local c = consts[j]
-									if type(c) == "string" and (string.find(c, "TakeTheL") or string.find(c, "ban") or string.find(c, "kick")) then
-										pcall(function()
-											hookfunction(fn, function() end)
-											ct = ct + 1
-										end)
-										break
-									end
-								end
-							end
-						end
-					end
-				end
-			end
-		end
-	end)
-end)
-
-
--- ========== Modules ==========
 local function sreq(inst)
 	if not inst then return nil end
 	local ok, m = pcall(require, inst)
@@ -658,100 +824,6 @@ local function encodeShot(from, to, head)
 	}
 end
 
--- ========== RAGE / VOID ==========
-local csync = { active = false, realCF = nil, serverPos = nil }
-
-pcall(function()
-	RunService:BindToRenderStep("hub_csync", Enum.RenderPriority.Camera.Value - 1, function()
-		local root = getRootPart()
-		if not root then return end
-		if csync.active and csync.realCF then
-			pcall(function()
-				root.CFrame = csync.realCF
-			end)
-		end
-	end)
-end)
-
-local function csyncCaptureVisual()
-	local root = getRootPart()
-	if root then
-		csync.realCF = root.CFrame
-	end
-end
-
-local function csyncBegin(pos)
-	local root = getRootPart()
-	if not root then return end
-	csync.realCF = root.CFrame
-	csync.serverPos = pos
-	csync.active = true
-	pcall(function()
-		root.CFrame = CFrame.new(pos)
-	end)
-end
-
-local function csyncEnd()
-	local root = getRootPart()
-	if root and csync.realCF then
-		pcall(function()
-			root.CFrame = csync.realCF
-		end)
-	end
-	csync.active = false
-	csync.serverPos = nil
-	csync.realCF = nil
-end
-
-local function rageFire(head)
-	if not head then return false end
-	refreshMods()
-	if not (Utility and EnumLibrary and UseItem) then return false end
-
-	local lf = getFighter()
-	if not lf or not lf.EquippedItem then return false end
-
-	local ok, oid = pcall(function()
-		return lf.EquippedItem:Get("ObjectID")
-	end)
-	local okE, se = pcall(function()
-		return EnumLibrary:ToEnum("StartShooting")
-	end)
-	if not (ok and oid and okE and se) then return false end
-
-	if head.Parent then
-		local hh = head.Parent:FindFirstChild("HitboxHead") or head.Parent:FindFirstChild("Head")
-		if hh then head = hh end
-	end
-	local pos = head.Position
-
-	csyncCaptureVisual()
-	local under = pos + Vector3.new(0, -1.8, 0)
-	csyncBegin(under)
-	local from = under
-	local aimPos = pos + Vector3.new(0, 0.15, 0)
-
-	local data = encodeShot(from, aimPos, head)
-	if not data then
-		csyncEnd()
-		return false
-	end
-
-	local fired = false
-	for _ = 1, 8 do
-		local okF = pcall(function()
-			UseItem:FireServer(oid, se, data, nil)
-		end)
-		if okF then fired = true end
-	end
-
-	task.delay(0.03, function()
-		csyncEnd()
-	end)
-	return fired
-end
-
--- Silent aim / trigger redirect on real shots
 task.spawn(function()
 	for _ = 1, 15 do
 		refreshMods()
@@ -762,7 +834,7 @@ task.spawn(function()
 	local old = GunModule.StartShooting
 	GunModule.StartShooting = function(self, ...)
 		local a, b, c, d, e = old(self, ...)
-		if not S.Rage and not S.Ragebot2 and not S.Triggerbot and not S.SilentAim then
+		if not S.Triggerbot and not S.SilentAim then
 			return a, b, c, d, e
 		end
 		local isLocal = false
@@ -780,9 +852,7 @@ task.spawn(function()
 			return a, b, c, d, e
 		end
 		local head
-		if S.Rage or S.Ragebot2 then
-			head = getNearest(true)
-		elseif S.SilentAim then
+		if S.SilentAim then
 			head = getTarget(false, S.AimFOV or 300)
 		else
 			head = getCrosshair(S.TrigFOV or 120)
@@ -791,9 +861,6 @@ task.spawn(function()
 			local pos = head.Position
 			local root = getRootPart()
 			local from = root and root.Position or Cam.CFrame.Position
-			if S.Rage or S.Ragebot2 then
-				from = pos + Vector3.new(0, -5, 0)
-			end
 			pcall(function()
 				local data = encodeShot(from, pos, head)
 				if data then
@@ -808,7 +875,6 @@ task.spawn(function()
 	end
 end)
 
--- Aimbot
 pcall(function()
 	RunService:UnbindFromRenderStep("hub_aimbot")
 end)
@@ -846,11 +912,9 @@ RunService:BindToRenderStep("hub_aimbot", Enum.RenderPriority.Camera.Value + 1, 
 	cam.CFrame = CFrame.lookAt(cam.CFrame.Position, best.Position)
 end)
 
--- Silent Aim
 local lastSilent = 0
 RunService.Heartbeat:Connect(function()
 	if not S.SilentAim then return end
-	if S.Rage or S.Ragebot2 then return end
 	local holding = false
 	pcall(function()
 		holding = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
@@ -881,10 +945,9 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
--- Triggerbot
 local lastTrig = 0
 RunService.Heartbeat:Connect(function()
-	if not S.Triggerbot or S.Rage or S.Ragebot2 then return end
+	if not S.Triggerbot then return end
 	if tick() - lastTrig < 0.1 then return end
 	local lf = getFighter()
 	if not lf or not lf.EquippedItem then return end
@@ -904,59 +967,6 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
--- Ragebot & Ragebot 2 loops
-local lastRageShot = 0
-local rageReadyAt = 0
-local rageWasOn = false
-
-local function armRageImmunity()
-	local waitSec = tonumber(S.RageInterval) or 0.5
-	if waitSec < 0.3 then waitSec = 0.3 end
-	rageReadyAt = tick() + waitSec
-end
-
-pcall(function()
-	LP.CharacterAdded:Connect(function()
-		if S.Rage or S.Ragebot2 then
-			armRageImmunity()
-		end
-	end)
-end)
-
-RunService.Heartbeat:Connect(function()
-	local activeRage = S.Rage or S.Ragebot2
-	if not activeRage then
-		rageWasOn = false
-		rageReadyAt = 0
-		if csync and csync.active and csyncEnd then pcall(csyncEnd) end
-		if csync then
-			csync.realCF = nil
-			csync.active = false
-		end
-		return
-	end
-	if not rageWasOn then
-		rageWasOn = true
-		armRageImmunity()
-	end
-	if tick() < rageReadyAt then
-		return
-	end
-	if tick() - lastRageShot < 0.05 then return end
-	local lf = getFighter and getFighter() or nil
-	if not lf or not lf.EquippedItem then return end
-	local head = getNearest(true)
-	if not head then return end
-	if head.Parent then
-		local hh = head.Parent:FindFirstChild("HitboxHead") or head.Parent:FindFirstChild("Head")
-		if hh then head = hh end
-	end
-	if rageFire and rageFire(head) then
-		lastRageShot = tick()
-	end
-end)
-
--- Void Spam
 local farVoidConn = nil
 local farVoidSaved = nil
 local function stopFarVoid()
@@ -985,9 +995,6 @@ local function startFarVoid()
 			stopFarVoid()
 			return
 		end
-		if (S.Rage or S.Ragebot2) and csync.active then
-			return
-		end
 		local root2 = getRootPart()
 		if not root2 then return end
 		if not farVoidSaved then
@@ -1005,7 +1012,6 @@ local function startFarVoid()
 	end)
 	RunService:BindToRenderStep("hub_farvoid_vis", Enum.RenderPriority.Camera.Value, function()
 		if not S.VoidSpam or not farVoidSaved then return end
-		if (S.Rage or S.Ragebot2) and csync.active then return end
 		local root2 = getRootPart()
 		if root2 then
 			pcall(function()
@@ -1031,7 +1037,6 @@ task.spawn(function()
 	end
 end)
 
--- Rapid Fire
 local function forceZeroInfo(info)
 	if type(info) ~= "table" then return end
 	for k, v in pairs(info) do
@@ -1155,7 +1160,6 @@ RunService.Heartbeat:Connect(function()
 	end)
 end)
 
--- WalkSpeed
 RunService.Heartbeat:Connect(function()
 	if not S.WalkSpeed then return end
 	local char = LP.Character
@@ -1174,7 +1178,6 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
--- ESP
 local hasDrawing = (typeof(Drawing) == "table" and Drawing.new) or (type(Drawing) == "table")
 local espDrawings = {}
 
@@ -1398,7 +1401,6 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
--- Noclip
 RunService.Stepped:Connect(function()
 	if not S.Noclip then return end
 	local char = LP.Character
@@ -1410,7 +1412,6 @@ RunService.Stepped:Connect(function()
 	end
 end)
 
--- Fly
 local flyConn = nil
 local flyBV = nil
 local flyBG = nil
@@ -1562,7 +1563,6 @@ LP.CharacterAdded:Connect(function()
 	end
 end)
 
--- FOV circle
 task.spawn(function()
 	local pg = LP:WaitForChild("PlayerGui", 10)
 	if not pg then return end
@@ -1595,7 +1595,6 @@ task.spawn(function()
 	end)
 end)
 
--- No Recoil / No Spread
 task.spawn(function()
 	for _ = 1, 20 do
 		refreshMods()
@@ -1623,7 +1622,6 @@ task.spawn(function()
 	end)
 end)
 
--- Freecam
 local freecam = { cam = nil, conn = nil, pos = nil }
 function stopFreecam()
 	if freecam.conn then freecam.conn:Disconnect(); freecam.conn = nil end
@@ -1665,7 +1663,6 @@ function startFreecam()
 	end)
 end
 
--- Auto Reload
 RunService.Heartbeat:Connect(function()
 	if not S.AutoReload then return end
 	pcall(function()
@@ -1698,7 +1695,6 @@ RunService.Heartbeat:Connect(function()
 	end)
 end)
 
--- Desync
 RunService.Heartbeat:Connect(function()
 	if not S.Desync then return end
 	pcall(function()
@@ -1715,7 +1711,6 @@ RunService.Heartbeat:Connect(function()
 	end)
 end)
 
--- Top-Edge Hit Notify Logic Replacement
 local lastHP = {}
 RunService.Heartbeat:Connect(function()
     if not S.HitNotify then return end
@@ -1739,7 +1734,6 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Hit Sound
 task.spawn(function()
 	local soundId = "rbxassetid://4764109000"
 	local function hookSounds(parent)
@@ -1763,6 +1757,7 @@ task.spawn(function()
 					v.Pitch = 1
 					v.Volume = 1
 				end
+				hookSounds(v)
 			end)
 		end)
 	end
@@ -1788,7 +1783,6 @@ task.spawn(function()
 	end)
 end)
 
--- Anti Flash / Smoke
 task.spawn(function()
 	while true do
 		task.wait(0.25)
@@ -1826,7 +1820,6 @@ task.spawn(function()
 	end
 end)
 
--- Crosshair
 task.spawn(function()
 	local pg = LP:WaitForChild("PlayerGui", 15)
 	if not pg then return end
@@ -1878,7 +1871,6 @@ task.spawn(function()
 	end)
 end)
 
--- Spectators
 task.spawn(function()
 	local pg = LP:WaitForChild("PlayerGui", 15)
 	if not pg then return end
@@ -1956,7 +1948,7 @@ function doServerHop()
 	end)
 end
 
-print("[hub] clean rebuild loaded with Ragebot2 and Emote")
+print("[hub] clean rebuild loaded with standard RageBot (Emote Removed)")
 
 	end)
 	print(ok and "[hub] features OK" or ("[hub] features FAIL: " .. tostring(err)))
