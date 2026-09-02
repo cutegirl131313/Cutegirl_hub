@@ -12,6 +12,7 @@ _G.HUB = _G.HUB or {
 	RapidFire = false, NoRecoil = false, NoSpread = false,
 	WalkSpeed = false, WalkSpeedValue = 45, Freecam = false, FreecamSpeed = 50,
 	RageBot = false, RageMode = "gun",
+	Orbit = false, OrbitStuds = 8,
 }
 local S = _G.HUB
 
@@ -25,7 +26,7 @@ Library.ShowCustomCursor = false
 Library.NotifySide = "Left"
 
 local Window = Library:CreateWindow({
-	Title = utf8.char(0xD050, 0xAC78) .. " " .. utf8.char(0xB098, 0xB2E4) .. " hub free v1",
+	Title = "íê±¸ ì§„í˜ hub",
 	Center = true,
 	AutoShow = true,
 	Resizable = true,
@@ -110,13 +111,16 @@ DeviceBox:AddDropdown("DeviceName", {
 DeviceBox:AddToggle("AntiAFK", { Text = "Anti AFK", Default = false, Callback = function(v) S.AntiAFK = v end })
 
 -- Rage Tab (Standard RageBot Controls)
-local RageBox = Tabs.Rage:AddLeftGroupbox("RageBot")
+local RageBox = Tabs.Rage:AddLeftGroupbox("Halmu Rage")
 RageBox:AddToggle("RageBotSwitch", { Text = "Rage Bot", Default = false, Callback = function(v) S.RageBot = v; runRageBot() end })
-RageBox:AddToggle("RageModeToggle", { Text = "Attack Type: Gun (Off = Melee)", Default = true, Callback = function(v) S.RageMode = v and "gun" or "melee"; if S.RageBot then runRageBot() end end })
+RageBox:AddToggle("OrbitSwitch", { Text = "Orbit", Default = false, Callback = function(v) S.Orbit = v; if setOrbit then setOrbit(v) end end })
+RageBox:AddSlider("OrbitStuds", { Text = "Orbit Studs", Default = 8, Min = 2, Max = 30, Rounding = 0, Callback = function(v) S.OrbitStuds = v; if setOrbitStuds then setOrbitStuds(v) end end })
+RageBox:AddToggle("VoidSpamRage", { Text = "Void Spam", Default = false, Callback = function(v) S.VoidSpam = v end })
+RageBox:AddSlider("DesyncDist", { Text = "Desync Dist", Default = 3, Min = 1, Max = 15, Rounding = 0, Callback = function(v) if setDesyncDist then setDesyncDist(v) end end })
 
 -- Settings
 local MenuBox = Tabs.Settings:AddLeftGroupbox("Menu")
-MenuBox:AddLabel(utf8.char(0xD050, 0xAC78) .. " " .. utf8.char(0xB098, 0xB2E4) .. " hub free v1")
+MenuBox:AddLabel("íê±¸ ì§„í˜ hub")
 MenuBox:AddLabel("Config below")
 
 pcall(function()
@@ -131,7 +135,7 @@ pcall(function()
 	end
 end)
 
-Library:Notify(utf8.char(0xD050, 0xAC78) .. " " .. utf8.char(0xB098, 0xB2E4) .. " hub free v1" .. " ready", 3)
+Library:Notify("íê±¸ ì§„í˜ hub" .. " ready", 3)
 print("[UI] ready")
 
 -- Automatic Anti-Cheat Bypass Setup
@@ -162,205 +166,179 @@ function applyAutoBypass()
 end
 applyAutoBypass()
 
+
+-- ========== HALMU RageBot + Orbit (replaces old runRageBot) ==========
+local _halmu = {
+	rageEnabled = false,
+	orbitEnabled = false,
+	desyncDist = 3,
+	orbitStuds = 8,
+	currentTarget = nil,
+	rageConn = nil,
+	RealCFrame = nil,
+	RealVelocity = nil,
+	orbitAngle = 0,
+	startRage = function() end,
+}
+
+function setOrbit(v)
+	_halmu.orbitEnabled = v
+end
+function setOrbitStuds(v)
+	_halmu.orbitStuds = v
+end
+function setDesyncDist(v)
+	_halmu.desyncDist = v
+end
+
+local function _isSameTeam(player)
+	if not S.TeamCheck then return false end
+	local a, b = game:GetService("Players").LocalPlayer:GetAttribute("TeamID"), player:GetAttribute("TeamID")
+	if a == nil or b == nil then return false end
+	return a == b
+end
+
+local function _getRageHead(char)
+	if not char then return nil end
+	return char:FindFirstChild("HitboxHead") or char:FindFirstChild("HitboxHeadSmall") or char:FindFirstChild("Head")
+end
+
+task.spawn(function()
+	pcall(function()
+		local LP = game:GetService("Players").LocalPlayer
+		local RS = game:GetService("ReplicatedStorage")
+		local RunService = game:GetService("RunService")
+		local Players = game:GetService("Players")
+		local _okF, FighterCtrl = pcall(require, LP.PlayerScripts.Controllers.FighterController)
+		local _okE, EnumLib = pcall(require, RS.Modules.EnumLibrary)
+		local _useItemRemote = RS.Remotes.Replication.Fighter.UseItem
+		local _ssEnum
+		pcall(function() _ssEnum = EnumLib:ToEnum("StartShooting") end)
+
+		local function getObjId()
+			if not (_okF and FighterCtrl and FighterCtrl.LocalFighter) then return nil end
+			local item = FighterCtrl.LocalFighter.EquippedItem
+			if not item then return nil end
+			local ok, id = pcall(function() return item:Get("ObjectID") end)
+			if ok and id then return id end
+			ok, id = pcall(function() return item.Data and item.Data.ObjectID end)
+			return ok and id or nil
+		end
+
+		local function buildShot(originPos, targetPart)
+			local targetPos = targetPart.Position
+			local lookCF = CFrame.lookAt(originPos, targetPos)
+			local lX, lY, lZ = lookCF:ToOrientation()
+			local originStruct = {
+				[utf8.char(0)] = originPos.X, [utf8.char(1)] = originPos.Y, [utf8.char(2)] = originPos.Z,
+				[utf8.char(3)] = lX, [utf8.char(4)] = lY, [utf8.char(5)] = lZ,
+			}
+			local relCF = targetPart.CFrame:ToObjectSpace(CFrame.new(targetPos))
+			local rX, rY, rZ = relCF:ToOrientation()
+			return {
+				[utf8.char(1)] = {
+					[utf8.char(0)] = originStruct, [utf8.char(1)] = originStruct,
+					[utf8.char(2)] = targetPart,
+					[utf8.char(3)] = {
+						[utf8.char(0)] = relCF.X, [utf8.char(1)] = relCF.Y, [utf8.char(2)] = relCF.Z,
+						[utf8.char(3)] = rX, [utf8.char(4)] = rY, [utf8.char(5)] = rZ,
+					},
+				},
+			}
+		end
+
+		_halmu.startRage = function(on)
+			if _halmu.rageConn then _halmu.rageConn:Disconnect() _halmu.rageConn = nil end
+			if not on then return end
+			local cachedId = nil
+			_halmu.rageConn = RunService.Heartbeat:Connect(function()
+				if not _halmu.rageEnabled then return end
+				if not _halmu.currentTarget or not _halmu.currentTarget.Parent then return end
+				local targetChar = _halmu.currentTarget:FindFirstAncestorOfClass("Model") or _halmu.currentTarget.Parent
+				local targetPlr = Players:GetPlayerFromCharacter(targetChar)
+				if not targetPlr or targetPlr == LP then return end
+				if _isSameTeam(targetPlr) then return end
+				local objId = getObjId()
+				if objId then cachedId = objId else objId = cachedId end
+				if not objId then return end
+				local origin = _halmu.currentTarget.Position + Vector3.new(0, 0.1, 0)
+				pcall(function()
+					_useItemRemote:FireServer(objId, _ssEnum, buildShot(origin, _halmu.currentTarget), nil)
+				end)
+			end)
+		end
+
+		-- Desync
+		RunService.Heartbeat:Connect(function()
+			pcall(function()
+				local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+				if _halmu.rageEnabled and _halmu.currentTarget and hrp then
+					_halmu.RealCFrame = hrp.CFrame
+					_halmu.RealVelocity = hrp.AssemblyLinearVelocity
+					local tp = _halmu.currentTarget.Position
+					hrp.CFrame = CFrame.new(tp + Vector3.new(0, _halmu.desyncDist, 0), tp)
+					hrp.AssemblyLinearVelocity = Vector3.zero
+				end
+			end)
+		end)
+		RunService:BindToRenderStep("HalmuRestoreDesync", 150, function()
+			pcall(function()
+				local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+				if hrp and _halmu.RealCFrame then
+					hrp.CFrame = _halmu.RealCFrame
+					if _halmu.RealVelocity then hrp.AssemblyLinearVelocity = _halmu.RealVelocity end
+					_halmu.RealCFrame, _halmu.RealVelocity = nil, nil
+				end
+			end)
+		end)
+
+		-- Target finder
+		task.spawn(function()
+			while true do
+				task.wait(0.01)
+				if _halmu.rageEnabled or _halmu.orbitEnabled then
+					local ref = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+					local refPos = ref and ref.Position or Vector3.zero
+					local closest, best = nil, math.huge
+					for _, plr in pairs(Players:GetPlayers()) do
+						if plr ~= LP and plr.Character and not _isSameTeam(plr) then
+							local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+							local hum = plr.Character:FindFirstChild("Humanoid")
+							if hrp and hum and hum.Health > 0 then
+								local d = (Vector3.new(refPos.X,0,refPos.Z) - Vector3.new(hrp.Position.X,0,hrp.Position.Z)).Magnitude
+								if d < best then best = d closest = plr end
+							end
+						end
+					end
+					_halmu.currentTarget = closest and closest.Character and _getRageHead(closest.Character) or nil
+				else
+					_halmu.currentTarget = nil
+				end
+			end
+		end)
+
+		-- Orbit
+		RunService:BindToRenderStep("HalmuOrbit", 100, function(dt)
+			if not _halmu.orbitEnabled then return end
+			local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+			if not hrp or not _halmu.currentTarget then return end
+			_halmu.orbitAngle = (_halmu.orbitAngle or 0) + (dt or 0.016) * 3.5
+			local tp = _halmu.currentTarget.Position
+			local offset = Vector3.new(math.cos(_halmu.orbitAngle) * _halmu.orbitStuds, 2, math.sin(_halmu.orbitAngle) * _halmu.orbitStuds)
+			hrp.CFrame = CFrame.new(tp + offset, tp)
+			hrp.AssemblyLinearVelocity = Vector3.zero
+		end)
+	end)
+end)
+
 function runRageBot()
 	if getgenv().__s9t0u1 then
 		pcall(function() getgenv().__s9t0u1:Shutdown() end)
 	end
-	if not S.RageBot then return end
-
-	if S.RageMode == "gun" then
-		local __a1b2c3 = setmetatable({}, {
-			__index = function(__d4e5f6, __g7h8i9)
-				local __j0k1l2, __m3n4o5 = pcall(function()
-					return game:GetService(__g7h8i9)
-				end)
-				if __m3n4o5 then return cloneref(__m3n4o5) end
-				return nil
-			end
-		})
-
-		local __p6q7r8 = getgenv()
-		if __p6q7r8.__s9t0u1 then __p6q7r8.__s9t0u1:Shutdown() end
-
-		local __v2w3x4 = __a1b2c3.Players
-		local __y5z6a7 = __a1b2c3.RunService
-		local __b8c9d0 = __a1b2c3.ReplicatedStorage
-		local __e1f2g3 = __a1b2c3.Workspace
-		local __k7l8m9 = __v2w3x4.LocalPlayer
-		local __q3r4s5 = __k7l8m9.PlayerScripts
-		local __t6u7v8 = require(__q3r4s5.Modules.ItemTypes.Gun)
-		local __w9x0y1 = require(__b8c9d0.Modules.Utility)
-
-		local __z2a3b4 = setmetatable({}, {
-			__index = function(_, __c5d6e7)
-				local __f8g9h0 = __k7l8m9.Character
-				if not __f8g9h0 then return nil end
-				if __c5d6e7 == "__root" then
-					return __f8g9h0:FindFirstChild("HumanoidRootPart")
-				elseif __c5d6e7 == "__head" then
-					return __f8g9h0:FindFirstChild("Head")
-				end
-				return nil
-			end
-		})
-
-		__p6q7r8.__s9t0u1 = {}
-
-		do
-			local __i1j2k3 = __p6q7r8.__s9t0u1
-
-			function __i1j2k3:__init()
-				self.__active = true
-				self.__target = nil
-				self.__desync = false
-				self.__conn1 = nil
-				self.__conn2 = nil
-				self.__task1 = nil
-				self.__oldfunc = nil
-				self:__setup()
-			end
-
-			function __i1j2k3:__setup()
-				self.__conn1 = __y5z6a7.Heartbeat:Connect(function()
-					if not self.__active then return end
-					self.__target = self:__find()
-				end)
-
-				local __l4m5n6 = __t6u7v8.StartShooting
-				self.__oldfunc = __l4m5n6
-				__t6u7v8.StartShooting = function(__o7p8q9, ...)
-					local __r0s1t2 = {__l4m5n6(__o7p8q9, ...)}
-					if not __o7p8q9.ClientFighter or not __o7p8q9.ClientFighter.IsLocalPlayer then
-						return unpack(__r0s1t2)
-					end
-
-					local __u3v4w5 = __r0s1t2[3]
-					if not __u3v4w5 or typeof(__u3v4w5) ~= "table" then
-						return unpack(__r0s1t2)
-					end
-
-					__r0s1t2[4] = true
-					local __x6y7z8 = self.__target
-
-					if not self.__active or not __x6y7z8 or not __x6y7z8.Character then
-						return unpack(__r0s1t2)
-					end
-
-					if not self.__desync or self.__curr ~= __x6y7z8 then
-						self:__desync_start(__x6y7z8)
-						task.wait(0.1)
-					end
-
-					if self.__task1 then
-						task.cancel(self.__task1)
-						self.__task1 = nil
-					end
-
-					local __a9b0c1 = __x6y7z8.Character:FindFirstChild("Head")
-					if not __a9b0c1 then return unpack(__r0s1t2) end
-
-					local __d2e3f4 = __a9b0c1.Position
-					local __g5h6i7 = __a9b0c1.CFrame
-					local __j8k9l0 = __d2e3f4 - Vector3.new(0, 5, 0)
-					local __m1n2o3 = CFrame.lookAt(__j8k9l0, __d2e3f4)
-					local __p4q5r6 = __g5h6i7:ToObjectSpace(CFrame.new(__d2e3f4 + Vector3.new(math.random(), math.random(), math.random())))
-
-					__u3v4w5[utf8.char(0)] = __w9x0y1:EncodeCFrame(CFrame.new(__j8k9l0, __d2e3f4) * CFrame.Angles(__m1n2o3:ToOrientation()))
-					__u3v4w5[utf8.char(1)] = __w9x0y1:EncodeCFrame(CFrame.new(__d2e3f4) * CFrame.Angles(__m1n2o3:ToOrientation()))
-					__u3v4w5[utf8.char(2)] = __a9b0c1
-					__u3v4w5[utf8.char(3)] = __w9x0y1:EncodeCFrame(__p4q5r6)
-
-					self.__task1 = task.delay(0.15, function()
-						self:__desync_stop()
-					end)
-
-					return unpack(__r0s1t2)
-				end
-			end
-
-			function __i1j2k3:__find()
-				local myChar = __k7l8m9.Character
-				if not myChar then return nil end
-				local myRoot = myChar:FindFirstChild("HumanoidRootPart")
-				if not myRoot then return nil end
-			   
-				local closest = nil
-				local closestDist = math.huge
-
-				for _, player in next, __v2w3x4:GetPlayers() do
-					if player == __k7l8m9 then continue end
-					if player:GetAttribute("TeamID") == __k7l8m9:GetAttribute("TeamID") then continue end
-				   
-					local char = player.Character
-					if not char then continue end
-
-					local root = char:FindFirstChild("HumanoidRootPart")
-					local head = char:FindFirstChild("Head")
-					local hum = char:FindFirstChildWhichIsA("Humanoid")
-					
-					if not (root and head and hum and hum.Health > 0) then continue end
-				   
-					local dist = (myRoot.Position - root.Position).Magnitude
-					if dist < closestDist then
-						closestDist = dist
-						closest = player
-					end
-				end
-				return closest
-			end
-
-			function __i1j2k3:__desync_start(__c3d4e5)
-				if self.__conn2 then self.__conn2:Disconnect() end
-				self.__desync = true
-				self.__curr = __c3d4e5
-
-				self.__conn2 = __y5z6a7.Heartbeat:Connect(function()
-					if not self.__desync then return end
-					local __f6g7h8 = __z2a3b4.__root
-					if not __f6g7h8 then return end
-
-					local __i9j0k1 = __c3d4e5.Character and __c3d4e5.Character:FindFirstChild("HumanoidRootPart")
-					if not __i9j0k1 then
-						self:__desync_stop()
-						return
-					end
-
-					local __l2m3n4 = __f6g7h8.CFrame
-					local __o5p6q7 = __f6g7h8.Velocity
-					local __r8s9t0 = __f6g7h8.RotVelocity
-
-					__f6g7h8.CFrame = __i9j0k1.CFrame * CFrame.new(0, -5, 0)
-
-					__y5z6a7:BindToRenderStep("__restore", 101, function()
-						__f6g7h8.CFrame = __l2m3n4
-						__f6g7h8.Velocity = __o5p6q7
-						__f6g7h8.RotVelocity = __r8s9t0
-						__y5z6a7:UnbindFromRenderStep("__restore")
-					end)
-				end)
-			end
-
-			function __i1j2k3:__desync_stop()
-				self.__desync = false
-				self.__curr = nil
-				if self.__conn2 then
-					self.__conn2:Disconnect()
-					self.__conn2 = nil
-				end
-			end
-
-			function __i1j2k3:Shutdown()
-				self.__active = false
-				if self.__conn1 then self.__conn1:Disconnect() end
-				if self.__conn2 then self.__conn2:Disconnect() end
-				if self.__task1 then task.cancel(self.__task1) end
-				if self.__oldfunc then __t6u7v8.StartShooting = self.__oldfunc end
-			end
-
-			__i1j2k3:__init()
-		end
-	end
+	_halmu.rageEnabled = S.RageBot == true
+	pcall(function() _halmu.startRage(_halmu.rageEnabled) end)
 end
+
 
 -- Original Lunara Features Script execution block below
 task.defer(function()
