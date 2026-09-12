@@ -1,0 +1,655 @@
+--[[
+    CuteGirl - Halmu Ragebot + Emote
+    Safe UI load | Rage uses Halmu UseItem method
+]]
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+pcall(function()
+	local old = PlayerGui:FindFirstChild("CuteGirlUI")
+	if old then old:Destroy() end
+end)
+
+local Accent = Color3.fromRGB(128, 213, 247)
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "CuteGirlUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = PlayerGui
+
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0, 70, 0, 36)
+ToggleBtn.Position = UDim2.new(0, 16, 0, 16)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(28, 28, 30)
+ToggleBtn.BorderSizePixel = 0
+ToggleBtn.Text = ""
+ToggleBtn.AutoButtonColor = false
+ToggleBtn.Parent = ScreenGui
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 6)
+local ts = Instance.new("UIStroke", ToggleBtn)
+ts.Color = Accent
+ts.Thickness = 1.5
+
+local tl1 = Instance.new("TextLabel", ToggleBtn)
+tl1.Size = UDim2.new(1, -6, 0, 16)
+tl1.Position = UDim2.new(0, 3, 0, 2)
+tl1.BackgroundTransparency = 1
+tl1.Font = Enum.Font.GothamBold
+tl1.Text = "Menu"
+tl1.TextColor3 = Color3.fromRGB(230, 230, 230)
+tl1.TextSize = 12
+tl1.TextXAlignment = Enum.TextXAlignment.Left
+
+local tl2 = Instance.new("TextLabel", ToggleBtn)
+tl2.Size = UDim2.new(1, -6, 0, 14)
+tl2.Position = UDim2.new(0, 3, 0, 18)
+tl2.BackgroundTransparency = 1
+tl2.Font = Enum.Font.Gotham
+tl2.Text = "Open"
+tl2.TextColor3 = Accent
+tl2.TextSize = 11
+tl2.TextXAlignment = Enum.TextXAlignment.Left
+
+local Main = Instance.new("Frame")
+Main.Size = UDim2.new(0, 360, 0, 300)
+Main.Position = UDim2.new(0.5, -180, 0.5, -150)
+Main.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
+Main.BorderSizePixel = 0
+Main.Parent = ScreenGui
+Main.ClipsDescendants = true
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 6)
+local mainStroke = Instance.new("UIStroke", Main)
+mainStroke.Color = Accent
+mainStroke.Thickness = 1.5
+mainStroke.Transparency = 0.35
+
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1, 0, 0, 32)
+TopBar.BackgroundColor3 = Color3.fromRGB(28, 28, 30)
+TopBar.BorderSizePixel = 0
+TopBar.Parent = Main
+Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 6)
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -16, 1, 0)
+Title.Position = UDim2.new(0, 12, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Font = Enum.Font.Code
+Title.Text = "CuteGirl"
+Title.TextColor3 = Color3.fromRGB(230, 230, 230)
+Title.TextSize = 15
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TopBar
+
+local AccentLine = Instance.new("Frame")
+AccentLine.Size = UDim2.new(1, 0, 0, 1)
+AccentLine.Position = UDim2.new(0, 0, 1, -1)
+AccentLine.BackgroundColor3 = Accent
+AccentLine.BorderSizePixel = 0
+AccentLine.Parent = TopBar
+
+do
+	local dragging, dragStart, startPos
+	TopBar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = Main.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then dragging = false end
+			end)
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local d = input.Position - dragStart
+			Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+		end
+	end)
+end
+
+local Container = Instance.new("ScrollingFrame")
+Container.Size = UDim2.new(1, -16, 1, -44)
+Container.Position = UDim2.new(0, 8, 0, 38)
+Container.BackgroundTransparency = 1
+Container.BorderSizePixel = 0
+Container.ScrollBarThickness = 3
+Container.ScrollBarImageColor3 = Accent
+Container.CanvasSize = UDim2.new(0, 0, 0, 0)
+Container.Parent = Main
+
+local List = Instance.new("UIListLayout", Container)
+List.SortOrder = Enum.SortOrder.LayoutOrder
+List.Padding = UDim.new(0, 8)
+List:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	Container.CanvasSize = UDim2.new(0, 0, 0, List.AbsoluteContentSize.Y + 12)
+end)
+
+local function AddSection(name)
+	local Section = Instance.new("Frame")
+	Section.Size = UDim2.new(1, 0, 0, 28)
+	Section.BackgroundColor3 = Color3.fromRGB(30, 30, 32)
+	Section.BorderSizePixel = 0
+	Section.Parent = Container
+	Instance.new("UICorner", Section).CornerRadius = UDim.new(0, 4)
+
+	local SecTitle = Instance.new("TextLabel")
+	SecTitle.Size = UDim2.new(1, -12, 0, 20)
+	SecTitle.Position = UDim2.new(0, 8, 0, 4)
+	SecTitle.BackgroundTransparency = 1
+	SecTitle.Font = Enum.Font.Code
+	SecTitle.Text = name
+	SecTitle.TextColor3 = Accent
+	SecTitle.TextSize = 13
+	SecTitle.TextXAlignment = Enum.TextXAlignment.Left
+	SecTitle.Parent = Section
+
+	local ItemHolder = Instance.new("Frame")
+	ItemHolder.Size = UDim2.new(1, -12, 0, 0)
+	ItemHolder.Position = UDim2.new(0, 6, 0, 24)
+	ItemHolder.BackgroundTransparency = 1
+	ItemHolder.Parent = Section
+
+	local ItemList = Instance.new("UIListLayout", ItemHolder)
+	ItemList.SortOrder = Enum.SortOrder.LayoutOrder
+	ItemList.Padding = UDim.new(0, 4)
+
+	local function update()
+		Section.Size = UDim2.new(1, 0, 0, ItemList.AbsoluteContentSize.Y + 28)
+	end
+	ItemList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(update)
+
+	local api = {}
+	function api:Toggle(text, default, callback)
+		local Btn = Instance.new("TextButton")
+		Btn.Size = UDim2.new(1, 0, 0, 22)
+		Btn.BackgroundColor3 = Color3.fromRGB(38, 38, 40)
+		Btn.BorderSizePixel = 0
+		Btn.Text = ""
+		Btn.AutoButtonColor = false
+		Btn.Parent = ItemHolder
+		Instance.new("UICorner", Btn).CornerRadius = UDim.new(0, 3)
+
+		local Box = Instance.new("Frame")
+		Box.Size = UDim2.new(0, 12, 0, 12)
+		Box.Position = UDim2.new(0, 6, 0.5, -6)
+		Box.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+		Box.BorderSizePixel = 0
+		Box.Parent = Btn
+		Instance.new("UICorner", Box).CornerRadius = UDim.new(0, 2)
+
+		local Check = Instance.new("Frame")
+		Check.Size = UDim2.new(0, 8, 0, 8)
+		Check.Position = UDim2.new(0, 2, 0, 2)
+		Check.BackgroundColor3 = Accent
+		Check.BorderSizePixel = 0
+		Check.Visible = default
+		Check.Parent = Box
+		Instance.new("UICorner", Check).CornerRadius = UDim.new(0, 1)
+
+		local Label = Instance.new("TextLabel")
+		Label.Size = UDim2.new(1, -28, 1, 0)
+		Label.Position = UDim2.new(0, 24, 0, 0)
+		Label.BackgroundTransparency = 1
+		Label.Font = Enum.Font.Code
+		Label.Text = text
+		Label.TextColor3 = Color3.fromRGB(200, 200, 200)
+		Label.TextSize = 13
+		Label.TextXAlignment = Enum.TextXAlignment.Left
+		Label.Parent = Btn
+
+		local on = default
+		Btn.MouseButton1Click:Connect(function()
+			on = not on
+			Check.Visible = on
+			pcall(callback, on)
+		end)
+		update()
+	end
+	function api:Slider(text, min, max, default, callback)
+		local Row = Instance.new("Frame")
+		Row.Size = UDim2.new(1, 0, 0, 36)
+		Row.BackgroundTransparency = 1
+		Row.Parent = ItemHolder
+
+		local Label = Instance.new("TextLabel")
+		Label.Size = UDim2.new(1, 0, 0, 14)
+		Label.BackgroundTransparency = 1
+		Label.Font = Enum.Font.Code
+		Label.Text = text .. ": " .. tostring(default)
+		Label.TextColor3 = Color3.fromRGB(200, 200, 200)
+		Label.TextSize = 12
+		Label.TextXAlignment = Enum.TextXAlignment.Left
+		Label.Parent = Row
+
+		local Bar = Instance.new("Frame")
+		Bar.Size = UDim2.new(1, 0, 0, 10)
+		Bar.Position = UDim2.new(0, 0, 0, 20)
+		Bar.BackgroundColor3 = Color3.fromRGB(40, 40, 44)
+		Bar.BorderSizePixel = 0
+		Bar.Parent = Row
+		Instance.new("UICorner", Bar).CornerRadius = UDim.new(0, 3)
+
+		local Fill = Instance.new("Frame")
+		Fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+		Fill.BackgroundColor3 = Accent
+		Fill.BorderSizePixel = 0
+		Fill.Parent = Bar
+		Instance.new("UICorner", Fill).CornerRadius = UDim.new(0, 3)
+
+		local val = default
+		local sliding = false
+		local function setFromX(x)
+			local rel = math.clamp((x - Bar.AbsolutePosition.X) / Bar.AbsoluteSize.X, 0, 1)
+			val = math.floor(min + (max - min) * rel + 0.5)
+			Fill.Size = UDim2.new(rel, 0, 1, 0)
+			Label.Text = text .. ": " .. tostring(val)
+			pcall(callback, val)
+		end
+		Bar.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				sliding = true
+				setFromX(input.Position.X)
+			end
+		end)
+		UserInputService.InputChanged:Connect(function(input)
+			if sliding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+				setFromX(input.Position.X)
+			end
+		end)
+		UserInputService.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				sliding = false
+			end
+		end)
+		update()
+	end
+	update()
+	return api
+end
+
+local uiVisible = true
+local function setUI(v)
+	uiVisible = v
+	Main.Visible = v
+	tl2.Text = v and "Open" or "Closed"
+	tl2.TextColor3 = v and Accent or Color3.fromRGB(180, 80, 80)
+end
+ToggleBtn.MouseButton1Click:Connect(function() setUI(not uiVisible) end)
+UserInputService.InputBegan:Connect(function(input, gpe)
+	if gpe then return end
+	if input.KeyCode == Enum.KeyCode.RightShift then setUI(not uiVisible) end
+end)
+
+-----------------------------------------------------------
+-- Halmu-style Ragebot (UseItem FireServer)
+-----------------------------------------------------------
+local _halmu = {
+	rageEnabled = false,
+	desyncEnabled = false,
+	desyncDist = 3,
+	currentTarget = nil,
+	rageConn = nil,
+	findConn = nil,
+	RealCFrame = nil,
+	ready = false,
+}
+
+local FighterCtrl, EnumLib, useItemRemote, ssEnum
+
+task.spawn(function()
+	local okF, fc = pcall(function()
+		return require(LocalPlayer.PlayerScripts.Controllers.FighterController)
+	end)
+	if okF then FighterCtrl = fc end
+
+	local okE, el = pcall(function()
+		return require(ReplicatedStorage.Modules.EnumLibrary)
+	end)
+	if okE then EnumLib = el end
+
+	pcall(function()
+		useItemRemote = ReplicatedStorage.Remotes.Replication.Fighter.UseItem
+	end)
+	pcall(function()
+		if EnumLib then ssEnum = EnumLib:ToEnum("StartShooting") end
+	end)
+	_halmu.ready = true
+end)
+
+local function isSameTeam(plr)
+	local a = LocalPlayer:GetAttribute("TeamID")
+	local b = plr:GetAttribute("TeamID")
+	if a == nil or b == nil then return false end
+	return a == b
+end
+
+local function getRageHead(char)
+	if not char then return nil end
+	return char:FindFirstChild("HitboxHead")
+		or char:FindFirstChild("HitboxHeadSmall")
+		or char:FindFirstChild("Head")
+end
+
+local function getObjId()
+	if not (FighterCtrl and FighterCtrl.LocalFighter) then return nil end
+	local item = FighterCtrl.LocalFighter.EquippedItem
+	if not item then return nil end
+	local ok, id = pcall(function() return item:Get("ObjectID") end)
+	if ok and id then return id end
+	ok, id = pcall(function() return item.Data and item.Data.ObjectID end)
+	return ok and id or nil
+end
+
+local function buildShot(originPos, targetPart)
+	local targetPos = targetPart.Position
+	local lookCF = CFrame.lookAt(originPos, targetPos)
+	local lX, lY, lZ = lookCF:ToOrientation()
+	local originStruct = {
+		[utf8.char(0)] = originPos.X, [utf8.char(1)] = originPos.Y, [utf8.char(2)] = originPos.Z,
+		[utf8.char(3)] = lX, [utf8.char(4)] = lY, [utf8.char(5)] = lZ,
+	}
+	local relCF = targetPart.CFrame:ToObjectSpace(CFrame.new(targetPos))
+	local rX, rY, rZ = relCF:ToOrientation()
+	return {
+		[utf8.char(1)] = {
+			[utf8.char(0)] = originStruct,
+			[utf8.char(1)] = originStruct,
+			[utf8.char(2)] = targetPart,
+			[utf8.char(3)] = {
+				[utf8.char(0)] = relCF.X, [utf8.char(1)] = relCF.Y, [utf8.char(2)] = relCF.Z,
+				[utf8.char(3)] = rX, [utf8.char(4)] = rY, [utf8.char(5)] = rZ,
+			},
+		},
+	}
+end
+
+local function startTargetFinder()
+	if _halmu.findConn then return end
+	_halmu.findConn = RunService.Heartbeat:Connect(function()
+		if not _halmu.rageEnabled then
+			_halmu.currentTarget = nil
+			return
+		end
+		local ref = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+		local refPos = ref and ref.Position or Vector3.zero
+		local closest, best = nil, math.huge
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr ~= LocalPlayer and plr.Character and not isSameTeam(plr) then
+				local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+				local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+				if hrp and hum and hum.Health > 0 then
+					local d = (Vector3.new(refPos.X, 0, refPos.Z) - Vector3.new(hrp.Position.X, 0, hrp.Position.Z)).Magnitude
+					if d < best then
+						best = d
+						closest = plr
+					end
+				end
+			end
+		end
+		_halmu.currentTarget = closest and getRageHead(closest.Character) or nil
+	end)
+end
+
+local function startRageFire()
+	if _halmu.rageConn then
+		_halmu.rageConn:Disconnect()
+		_halmu.rageConn = nil
+	end
+	if not _halmu.rageEnabled then return end
+
+	local cachedId = nil
+	_halmu.rageConn = RunService.Heartbeat:Connect(function()
+		if not _halmu.rageEnabled then return end
+		if not useItemRemote or not ssEnum then return end
+		local target = _halmu.currentTarget
+		if not target or not target.Parent then return end
+
+		local objId = getObjId()
+		if objId then cachedId = objId else objId = cachedId end
+		if not objId then return end
+
+		local origin = target.Position + Vector3.new(0, 0.1, 0)
+		pcall(function()
+			useItemRemote:FireServer(objId, ssEnum, buildShot(origin, target), nil)
+		end)
+	end)
+end
+
+-- Soft desync (optional)
+local desyncConn, restoreName
+restoreName = "cg_halmu_restore"
+RunService.Heartbeat:Connect(function()
+	if not (_halmu.rageEnabled and _halmu.desyncEnabled and _halmu.currentTarget) then return end
+	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	_halmu.RealCFrame = hrp.CFrame
+	local tp = _halmu.currentTarget.Position
+	hrp.CFrame = CFrame.new(tp + Vector3.new(0, _halmu.desyncDist, 0), tp)
+	hrp.AssemblyLinearVelocity = Vector3.zero
+end)
+RunService:BindToRenderStep(restoreName, 150, function()
+	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	if hrp and _halmu.RealCFrame then
+		hrp.CFrame = _halmu.RealCFrame
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		_halmu.RealCFrame = nil
+	end
+end)
+
+local function setRage(on)
+	_halmu.rageEnabled = on and true or false
+	if on then
+		startTargetFinder()
+		startRageFire()
+	else
+		if _halmu.rageConn then
+			_halmu.rageConn:Disconnect()
+			_halmu.rageConn = nil
+		end
+		_halmu.currentTarget = nil
+	end
+end
+
+-----------------------------------------------------------
+-- Emote (fixed)
+-----------------------------------------------------------
+local EmoteEnabled = false
+local emoteTrack = nil
+local emoteAnim = Instance.new("Animation")
+-- common emote / dance ids (first that loads wins)
+local EMOTESPEED = 250
+local EMOTES = {
+	"rbxassetid://507771019",   -- dance
+	"rbxassetid://507776043",
+	"rbxassetid://507777623",
+	"rbxassetid://3698339488",
+	"rbxassetid://92281817840531",
+}
+
+local function stopEmote()
+	EmoteEnabled = false
+	if emoteTrack then
+		pcall(function() emoteTrack:Stop() end)
+		emoteTrack = nil
+	end
+	local char = LocalPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		pcall(function()
+			for _, t in ipairs(hum:GetPlayingAnimationTracks()) do
+				t:Stop()
+			end
+		end)
+	end
+end
+
+local function playEmote(char)
+	if not EmoteEnabled then return end
+	char = char or LocalPlayer.Character
+	if not char then return end
+	local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 3)
+	if not hum then return end
+	local animator = hum:FindFirstChildOfClass("Animator")
+	if not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = hum
+	end
+
+	-- try ids until one works
+	for _, id in ipairs(EMOTES) do
+		local ok, track = pcall(function()
+			local a = Instance.new("Animation")
+			a.AnimationId = id
+			local t = animator:LoadAnimation(a)
+			t.Priority = Enum.AnimationPriority.Action4
+			t.Looped = true
+			t:Play(0.1, 1, EMOTESPEED)
+			return t
+		end)
+		if ok and track then
+			emoteTrack = track
+			track.Stopped:Connect(function()
+				if EmoteEnabled then
+					task.defer(function() playEmote(char) end)
+				end
+			end)
+			return
+		end
+	end
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+	if EmoteEnabled then
+		task.delay(0.5, function()
+			if EmoteEnabled then playEmote(char) end
+		end)
+	end
+end)
+
+-----------------------------------------------------------
+-- UI
+-----------------------------------------------------------
+local RageSec = AddSection("Ragebot (Halmu)")
+RageSec:Toggle("Ragebot", false, function(v)
+	setRage(v)
+end)
+RageSec:Toggle("Desync", false, function(v)
+	_halmu.desyncEnabled = v
+end)
+RageSec:Slider("Desync Dist", 1, 10, 3, function(v)
+	_halmu.desyncDist = v
+end)
+
+local EmoteSec = AddSection("Emote")
+EmoteSec:Toggle("Emote glitch", false, function(v)
+	if v then
+		EmoteEnabled = true
+		playEmote(LocalPlayer.Character)
+	else
+		stopEmote()
+	end
+end)
+
+
+-----------------------------------------------------------
+-- Anti from Cute_girl hub (deferred, after UI)
+-----------------------------------------------------------
+local function applyHubAnti()
+	-- 1) Kick / Ban namecall block
+	pcall(function()
+		local mt = getrawmetatable(game)
+		if not mt then return end
+		setreadonly(mt, false)
+		local old = mt.__namecall
+		mt.__namecall = newcclosure(function(self, ...)
+			local method = getnamecallmethod()
+			if method == "Kick" or method == "Ban" or method == "kick" then
+				return
+			end
+			if type(method) == "string" then
+				local ml = string.lower(method)
+				if string.find(ml, "kick") or method == "Shutdown" then
+					return
+				end
+			end
+			return old(self, ...)
+		end)
+		setreadonly(mt, true)
+	end)
+
+	-- 2) ClientAlert spoof (hub anti)
+	pcall(function()
+		local fake = Instance.new("RemoteEvent")
+		fake.Name = "ClientAlert"
+		fake.Parent = LocalPlayer
+
+		local pmt = getrawmetatable(LocalPlayer)
+		if pmt then
+			local oldnc = pmt.__namecall
+			setreadonly(pmt, false)
+			pmt.__namecall = newcclosure(function(self, ...)
+				if getnamecallmethod() == "WaitForChild" and select(1, ...) == "ClientAlert" then
+					return fake
+				end
+				return oldnc(self, ...)
+			end)
+			setreadonly(pmt, true)
+		end
+	end)
+
+	-- 3) Hide kick prompt
+	pcall(function()
+		local CoreGui = game:GetService("CoreGui")
+		local function hidePrompt(v)
+			if v.Name == "RobloxPromptGui" then
+				local prompt = v:FindFirstChild("promptOverlay", true)
+				if prompt then prompt.Visible = false end
+			end
+		end
+		for _, v in pairs(CoreGui:GetChildren()) do
+			hidePrompt(v)
+		end
+		CoreGui.ChildAdded:Connect(hidePrompt)
+	end)
+
+	-- 4) Disable obvious AC local scripts by name
+	task.spawn(function()
+		pcall(function()
+			local tags = {"anticheat", "ac", "detection", "ban", "kick", "security", "moderation"}
+			local function proc(o)
+				pcall(function()
+					if o:IsA("LocalScript") or o:IsA("ModuleScript") then
+						local nm = string.lower(o.Name)
+						for i = 1, #tags do
+							if string.find(nm, tags[i], 1, true) then
+								pcall(function() o.Disabled = true end)
+								break
+							end
+						end
+					end
+				end)
+			end
+			for _, o in ipairs(game:GetDescendants()) do
+				proc(o)
+			end
+			game.DescendantAdded:Connect(proc)
+		end)
+	end)
+
+	print("[CuteGirl] hub anti applied")
+end
+
+-- apply after short delay so UI is already up
+task.defer(function()
+	task.wait(0.5)
+	pcall(applyHubAnti)
+end)
+
+print("[CuteGirl] Halmu rage + emote loaded | RightShift toggle UI")
