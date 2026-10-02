@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CG · Script Access</title>
-  <meta name="description" content="CG script key access" />
+  <title>CG · Access</title>
+  <meta name="description" content="CG protected access" />
   <link rel="stylesheet" href="style.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,22 +12,25 @@
 </head>
 <body>
   <div class="bg"></div>
-  <main class="card">
-    <header class="header">
-      <div class="logo">CG</div>
-      <h1>Cutegirl Access</h1>
-      <p class="sub">키를 입력하면 스크립트 로드 코드가 나옵니다</p>
-    </header>
+
+  <!-- 잠금 화면: 키 없으면 이것만 보임 -->
+  <main id="gate" class="card gate">
+    <div class="lock-icon" aria-hidden="true">🔒</div>
+    <h1 class="deny-title">페이지를 볼 권한이 없습니다</h1>
+    <p class="deny-desc">
+      이 페이지는 허가된 키를 가진 사용자만 이용할 수 있습니다.<br />
+      아래에 액세스 키를 입력하세요.
+    </p>
 
     <section class="form">
       <label for="keyInput">Access Key</label>
       <div class="row">
         <input
           id="keyInput"
-          type="text"
+          type="password"
           autocomplete="off"
           spellcheck="false"
-          placeholder="XXXX-XXXX-XXXX-XXXX"
+          placeholder="키 입력"
           maxlength="64"
         />
         <button id="btnCheck" type="button">확인</button>
@@ -35,18 +38,25 @@
       <p id="status" class="status" aria-live="polite"></p>
     </section>
 
-    <section id="result" class="result hidden">
+    <footer class="footer">
+      <a id="discordLink" href="https://discord.gg/your-invite" target="_blank" rel="noopener">Discord에서 키 받기</a>
+    </footer>
+  </main>
+
+  <!-- 인증 성공 후에만 표시 -->
+  <main id="panel" class="card panel hidden">
+    <header class="header">
+      <div class="logo">CG</div>
+      <h1>Cutegirl Access</h1>
+      <p class="sub">인증됨 · 아래 코드를 실행기에 붙여넣으세요</p>
+    </header>
+
+    <section class="result">
       <h2>로드 코드</h2>
-      <p class="hint">아래 코드를 실행기에 붙여넣고 실행하세요</p>
       <pre id="loaderCode"></pre>
       <button id="btnCopy" type="button" class="secondary">복사</button>
+      <button id="btnLock" type="button" class="secondary ghost">다시 잠금</button>
     </section>
-
-    <footer class="footer">
-      <a id="discordLink" href="https://discord.gg/your-invite" target="_blank" rel="noopener">Discord</a>
-      <span class="dot">·</span>
-      <span>GitHub Pages</span>
-    </footer>
   </main>
 
   <script src="app.js"></script>
