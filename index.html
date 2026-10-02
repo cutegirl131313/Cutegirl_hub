@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CG · Script Access</title>
+  <meta name="description" content="CG script key access" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="bg"></div>
+  <main class="card">
+    <header class="header">
+      <div class="logo">CG</div>
+      <h1>Cutegirl Access</h1>
+      <p class="sub">키를 입력하면 스크립트 로드 코드가 나옵니다</p>
+    </header>
+
+    <section class="form">
+      <label for="keyInput">Access Key</label>
+      <div class="row">
+        <input
+          id="keyInput"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="XXXX-XXXX-XXXX-XXXX"
+          maxlength="64"
+        />
+        <button id="btnCheck" type="button">확인</button>
+      </div>
+      <p id="status" class="status" aria-live="polite"></p>
+    </section>
+
+    <section id="result" class="result hidden">
+      <h2>로드 코드</h2>
+      <p class="hint">아래 코드를 실행기에 붙여넣고 실행하세요</p>
+      <pre id="loaderCode"></pre>
+      <button id="btnCopy" type="button" class="secondary">복사</button>
+    </section>
+
+    <footer class="footer">
+      <a id="discordLink" href="https://discord.gg/your-invite" target="_blank" rel="noopener">Discord</a>
+      <span class="dot">·</span>
+      <span>GitHub Pages</span>
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
