@@ -1,14 +1,6 @@
 {
   "keys": [
-    {
-      "key": "CG-DEMO-0001-TEST",
-      "note": "데모 키 — 배포 전 삭제하세요",
-      "expires": "2027-12-31"
-    },
-    {
-      "key": "CG-PREM-ABCD-EFGH",
-      "note": "예시 프리미엄 키",
-      "expires": "2027-06-01"
-    }
+    { "key": "CG-DEMO-0001-TEST" },
+    { "key": "CG-DEMO-0001-TEST" }
   ]
 }
