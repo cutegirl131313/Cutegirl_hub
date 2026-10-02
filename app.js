@@ -1,22 +1,21 @@
 /**
- * CG Key Site — GitHub Pages (static)
- * keys.json 에 등록된 키만 통과합니다.
- * 주의: 정적 사이트라 키가 저장소에 공개됩니다. 간단용입니다.
+ * CG Key Site — locked until valid key
+ * 기본 화면: "페이지를 볼 권한이 없습니다"
  */
 
 const CONFIG = {
-  // 실제 스크립트 raw URL 로 바꾸세요 (GitHub raw / paste 등)
-  scriptUrl: "https://raw.githubusercontent.com/YOUR_USER/YOUR_REPO/main/script.lua",
-  // Discord 초대 링크
+  scriptUrl: "https://raw.githubusercontent.com/cutegirl131313/Cutegirl_hub/main/Nervous",
   discordInvite: "https://discord.gg/your-invite",
 };
 
+const gate = document.getElementById("gate");
+const panel = document.getElementById("panel");
 const keyInput = document.getElementById("keyInput");
 const btnCheck = document.getElementById("btnCheck");
 const statusEl = document.getElementById("status");
-const resultEl = document.getElementById("result");
 const loaderCodeEl = document.getElementById("loaderCode");
 const btnCopy = document.getElementById("btnCopy");
+const btnLock = document.getElementById("btnLock");
 const discordLink = document.getElementById("discordLink");
 
 discordLink.href = CONFIG.discordInvite;
@@ -34,13 +33,12 @@ function normalizeKey(k) {
 }
 
 function buildLoader(key) {
-  // 실행기용 로더: 키를 헤더/쿼리로 넘기는 형태 (나중에 서버 붙이면 교체)
   return [
-    `-- CG Loader | key bound`,
+    `-- CG Loader`,
     `local key = "${key}"`,
     `local url = "${CONFIG.scriptUrl}"`,
     `local ok, src = pcall(function()`,
-    `  return game:HttpGet(url .. "?key=" .. key)`,
+    `  return game:HttpGet(url)`,
     `end)`,
     `if not ok or not src or src == "" then`,
     `  warn("[CG] download failed")`,
@@ -55,6 +53,18 @@ function buildLoader(key) {
   ].join("\n");
 }
 
+function showDenied(msg) {
+  gate.classList.remove("hidden");
+  panel.classList.add("hidden");
+  setStatus(msg || "페이지를 볼 권한이 없습니다.", "bad");
+}
+
+function showPanel(key) {
+  gate.classList.add("hidden");
+  panel.classList.remove("hidden");
+  loaderCodeEl.textContent = buildLoader(key);
+}
+
 async function loadKeys() {
   const res = await fetch("keys.json", { cache: "no-store" });
   if (!res.ok) throw new Error("keys.json 로드 실패");
@@ -64,11 +74,9 @@ async function loadKeys() {
 
 async function checkKey() {
   const key = normalizeKey(keyInput.value);
-  resultEl.classList.add("hidden");
-  loaderCodeEl.textContent = "";
 
   if (!key || key.length < 4) {
-    setStatus("키를 입력하세요.", "bad");
+    setStatus("페이지를 볼 권한이 없습니다. 키를 입력하세요.", "bad");
     return;
   }
 
@@ -89,17 +97,18 @@ async function checkKey() {
     });
 
     if (!found) {
-      setStatus("유효하지 않거나 만료된 키입니다.", "bad");
+      setStatus("페이지를 볼 권한이 없습니다.", "bad");
+      panel.classList.add("hidden");
+      gate.classList.remove("hidden");
       return;
     }
 
     const displayKey = normalizeKey(typeof found === "string" ? found : found.key);
-    setStatus("인증 성공", "ok");
-    loaderCodeEl.textContent = buildLoader(displayKey);
-    resultEl.classList.remove("hidden");
+    setStatus("", "");
+    showPanel(displayKey);
   } catch (e) {
     console.error(e);
-    setStatus("키 목록을 불러오지 못했습니다. keys.json 을 확인하세요.", "bad");
+    setStatus("페이지를 볼 권한이 없습니다.", "bad");
   } finally {
     btnCheck.disabled = false;
   }
@@ -115,8 +124,19 @@ btnCopy.addEventListener("click", async () => {
   if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
-    setStatus("복사됨", "ok");
+    btnCopy.textContent = "복사됨";
+    setTimeout(() => {
+      btnCopy.textContent = "복사";
+    }, 1200);
   } catch {
-    setStatus("복사 실패 — 직접 드래그해서 복사하세요.", "bad");
+    btnCopy.textContent = "복사 실패";
   }
 });
+
+btnLock.addEventListener("click", () => {
+  keyInput.value = "";
+  showDenied("페이지를 볼 권한이 없습니다.");
+});
+
+// 첫 화면 = 권한 없음
+showDenied("페이지를 볼 권한이 없습니다.");
