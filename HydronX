@@ -1,0 +1,1835 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+local Workspace = game:GetService("Workspace")
+local GuiService = game:GetService("GuiService")
+
+if type(clonefunction) ~= "function" then function clonefunction(f) return f end end
+if type(cloneref) ~= "function" then function cloneref(o) return o end end
+if type(table.clone) ~= "function" then
+    function table.clone(t)
+        if type(t) ~= "table" then return t end
+        local n = {}
+        for k, v in pairs(t) do n[k] = v end
+        return n
+    end
+end
+
+local LP = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local repo = "https://raw.githubusercontent.com/mstudio45/LinoriaLib/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+
+local Window = Library:CreateWindow({
+    Title = "HydronX",
+    Center = true,
+    AutoShow = true,
+    Resizable = true,
+    NotifySide = "Right",
+    TabPadding = 8,
+    MenuFadeTime = 0.05,
+})
+
+local Options = Library.Options
+local Toggles = Library.Toggles
+
+local Tabs = {
+    Combat = Window:AddTab("Combat"),
+    Visuals = Window:AddTab("Visuals"),
+    Misc = Window:AddTab("Misc"),
+    ["UI Settings"] = Window:AddTab("UI Settings"),
+}
+
+local State = {
+    RageEnabled = false,
+    TeamCheck = true,
+    ImmuneCheck = true,
+    DesyncEnabled = true,
+    DesyncDistance = 2.5,
+    VoidSpamEnabled = false,
+    VoidSpamInterval = 0.3,
+    RageInterval = 0.15,
+    VoidSpamHeight = 1e8,
+    OrbitEnabled = false,
+    OrbitRadius = 4,
+    OrbitSpeed = 10000,
+    OrbitAngle = 0,
+    LastFire = 0,
+    Phase = "rage",
+    PhaseStart = tick(),
+    SavedCF = nil,
+    SavedVel = nil,
+    Target = nil,
+    TargetUpdate = 0,
+}
+
+local FIRE_RATE = 0.002
+
+local util, enum, FighterController, UseItem
+local CachedChar, CachedRoot
+local CacheRefresh = 0
+local PlayerCache = {}
+local PlayerCacheAt = 0
+
+local function refreshCache(force)
+    local now = tick()
+    if not force and (now - CacheRefresh) < 0.5 then return end
+    CacheRefresh = now
+    if not util then pcall(function() util = require(ReplicatedStorage.Modules.Utility) end) end
+    if not enum then pcall(function() enum = require(ReplicatedStorage.Modules.EnumLibrary) end) end
+    if not FighterController then pcall(function() FighterController = require(LP.PlayerScripts.Controllers.FighterController) end) end
+    if not UseItem or not UseItem.Parent then
+        pcall(function() UseItem = ReplicatedStorage.Remotes.Replication.Fighter.UseItem end)
+    end
+    CachedChar = LP.Character
+    CachedRoot = CachedChar and CachedChar:FindFirstChild("HumanoidRootPart")
+end
+
+refreshCache(true)
+
+LP.CharacterAdded:Connect(function(c)
+    CachedChar = c
+    CachedRoot = nil
+    task.spawn(function()
+        CachedRoot = c:WaitForChild("HumanoidRootPart", 5)
+    end)
+end)
+LP.CharacterRemoving:Connect(function()
+    CachedChar = nil
+    CachedRoot = nil
+end)
+
+local function refreshPlayerCache()
+    local now = tick()
+    if now - PlayerCacheAt < 0.25 then return end
+    PlayerCacheAt = now
+    PlayerCache = Players:GetPlayers()
+end
+
+local function toEnum(name)
+    if enum and enum.ToEnum then
+        local ok, v = pcall(function() return enum:ToEnum(name) end)
+        if ok and v ~= nil then return v end
+    end
+    return name
+end
+
+local function encCF(cf)
+    if util and util.EncodeCFrame then
+        local ok, v = pcall(function() return util:EncodeCFrame(cf) end)
+        if ok and v ~= nil then return v end
+    end
+    local x, y, z = cf:ToOrientation()
+    return {
+        [utf8.char(0)] = cf.X, [utf8.char(1)] = cf.Y, [utf8.char(2)] = cf.Z,
+        [utf8.char(3)] = x, [utf8.char(4)] = y, [utf8.char(5)] = z,
+    }
+end
+
+local function itemId(item)
+    if not item then return nil end
+    local ok, id = pcall(function() return item:Get("ObjectID") end)
+    if ok and id ~= nil then return id end
+    local data = rawget(item, "Data")
+    if type(data) == "table" and data.ObjectID ~= nil then return data.ObjectID end
+    return rawget(item, "ObjectID")
+end
+
+local function isMelee(item)
+    local info = item and rawget(item, "Info")
+    if info and rawget(info, "Type") == "Melee" then return true end
+    local n = string.lower(tostring(rawget(item, "Name") or ""))
+    return n:find("knife", 1, true) or n:find("dagger", 1, true)
+        or n:find("sword", 1, true) or n:find("katana", 1, true)
+        or n:find("axe", 1, true) or n:find("scythe", 1, true)
+        or n:find("spear", 1, true) or n:find("fist", 1, true)
+        or n:find("maul", 1, true) or n:find("trowel", 1, true)
+        or n:find("chainsaw", 1, true)
+end
+
+local function getItem()
+    local lf = FighterController and FighterController.LocalFighter
+    if not lf then
+        pcall(function() FighterController = require(LP.PlayerScripts.Controllers.FighterController) end)
+        lf = FighterController and FighterController.LocalFighter
+    end
+    return lf and lf.EquippedItem or nil
+end
+
+local function isEnemy(plr)
+    if not plr or plr == LP then return false end
+    local ch = plr.Character
+    if not ch then return false end
+    local hum = ch:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+    if not State.TeamCheck then return true end
+    local lTeamId = LP:GetAttribute("TeamID")
+    local tTeamId = plr:GetAttribute("TeamID")
+    if lTeamId ~= nil and tTeamId ~= nil and lTeamId == tTeamId then return false end
+    local lCharTeam = LP.Character and LP.Character:GetAttribute("TeamID")
+    local tCharTeam = ch:GetAttribute("TeamID")
+    if lCharTeam ~= nil and tCharTeam ~= nil and lCharTeam == tCharTeam then return false end
+    if LP.Team and plr.Team and LP.Team == plr.Team then return false end
+    return true
+end
+
+local function isImmune(plr)
+    if not State.ImmuneCheck then return false end
+    if not plr then return true end
+    local ch = plr.Character
+    if not ch then return true end
+    if ch:FindFirstChildOfClass("ForceField") then return true end
+    local hrp = ch:FindFirstChild("HumanoidRootPart")
+    if hrp and hrp:FindFirstChild("Attachment") then return true end
+    local inv = ch:GetAttribute("Immune") or ch:GetAttribute("Invincible") or ch:GetAttribute("IsImmune")
+    if inv == true then return true end
+    local hum = ch:FindFirstChildOfClass("Humanoid")
+    if hum then
+        local hInv = hum:GetAttribute("Immune") or hum:GetAttribute("Invincible")
+        if hInv == true then return true end
+        if hum.Health <= 0 then return true end
+    end
+    local be = ch:FindFirstChild("BodyEffects")
+    if be then
+        local god = be:FindFirstChild("God") or be:FindFirstChild("Invincible")
+        if god and god.Value then return true end
+    end
+    return false
+end
+
+local function getTarget()
+    local myRoot = CachedRoot
+    if not myRoot then return nil end
+    local cam = Camera
+    if not cam then return nil end
+    refreshPlayerCache()
+    local center = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
+    local best, bestD = nil, 1e9
+    for i = 1, #PlayerCache do
+        local plr = PlayerCache[i]
+        if isEnemy(plr) and not isImmune(plr) then
+            local ch = plr.Character
+            local root = ch and ch:FindFirstChild("HumanoidRootPart")
+            local head = ch and (ch:FindFirstChild("HitboxHead") or ch:FindFirstChild("Head"))
+            if root and head then
+                local sp, on = cam:WorldToViewportPoint(root.Position)
+                if on and sp.Z > 0 then
+                    local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+                    if d < bestD then
+                        bestD = d
+                        best = { plr = plr, root = root, head = head, dist = d }
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+local function saveCF()
+    local root = CachedRoot
+    if root and not State.SavedCF then
+        State.SavedCF = root.CFrame
+        State.SavedVel = root.AssemblyLinearVelocity
+    end
+end
+
+local function restoreCF()
+    if not State.SavedCF then return end
+    local root = CachedRoot
+    if root then
+        pcall(function()
+            root.CFrame = State.SavedCF
+            root.AssemblyLinearVelocity = State.SavedVel or Vector3.zero
+        end)
+    end
+    State.SavedCF = nil
+    State.SavedVel = nil
+end
+
+RunService:BindToRenderStep("HydronXDesyncRestore", Enum.RenderPriority.First.Value, restoreCF)
+
+local function fireShot(item, head, originPos, lookCF)
+    if not UseItem or not item or not head then return end
+    local oid = itemId(item)
+    if not oid then return end
+    local targetPos = head.Position
+    local aimCF = lookCF or CFrame.lookAt(originPos, targetPos)
+    local targetCF = head.CFrame
+    local objSpace = head.CFrame:ToObjectSpace(CFrame.new(targetPos))
+    local cameradata = {}
+    cameradata[utf8.char(1)] = {
+        [utf8.char(0)] = encCF(aimCF),
+        [utf8.char(1)] = encCF(targetCF),
+        [utf8.char(2)] = head,
+        [utf8.char(3)] = encCF(objSpace),
+    }
+    if isMelee(item) then
+        local AIM_ORIGIN = { ["\0"] = -1e30, ["\1"] = 0, ["\2"] = 0 }
+        local AIM_END    = { ["\0"] = 0, ["\1"] = -9e7, ["\2"] = 0 }
+        local AIM_EXTRA  = { ["\0"] = 0, ["\1"] = 1, ["\2"] = 0, ["\3"] = 0, ["\4"] = 0, ["\5"] = 0 }
+        pcall(function()
+            UseItem:FireServer(oid, toEnum("StartAiming"), {
+                ["\1"] = { ["\0"] = AIM_ORIGIN, ["\1"] = AIM_END, ["\2"] = head, ["\3"] = AIM_EXTRA },
+                ["\2"] = toEnum("HeavyAttackAnimation1"),
+            }, nil)
+        end)
+        pcall(function()
+            UseItem:FireServer(oid, toEnum("StartShooting"), {
+                ["\1"] = { ["\0"] = AIM_ORIGIN, ["\1"] = AIM_END, ["\2"] = head, ["\3"] = AIM_EXTRA },
+                ["\2"] = toEnum("AttackAnimation1"),
+            }, nil)
+        end)
+    else
+        pcall(function()
+            UseItem:FireServer(oid, toEnum("StartShooting"), cameradata, nil)
+        end)
+    end
+end
+
+local function computeDest(tgt, now, dt)
+    local root = CachedRoot
+    if not root then return tgt.root.CFrame end
+    if not State.OrbitEnabled then
+        return tgt.root.CFrame * CFrame.new(0, 0.2, State.DesyncDistance)
+    end
+    State.OrbitAngle = State.OrbitAngle + State.OrbitSpeed * dt
+    if State.OrbitAngle > math.pi * 2 then State.OrbitAngle = State.OrbitAngle - math.pi * 2 end
+    local offset = Vector3.new(
+        math.cos(State.OrbitAngle) * State.OrbitRadius,
+        1.5,
+        math.sin(State.OrbitAngle) * State.OrbitRadius
+    )
+    return CFrame.new(tgt.root.Position + offset, tgt.head.Position)
+end
+
+local lastLoopTick = os.clock()
+
+task.spawn(function()
+    while true do
+        task.wait(FIRE_RATE)
+        if not State.RageEnabled then continue end
+        refreshCache()
+        local now = os.clock()
+        local dt = now - lastLoopTick
+        lastLoopTick = now
+        if dt > 0.5 or dt < 0 then dt = 0.016 end
+        local tgt = getTarget()
+        if not tgt then continue end
+        local root = CachedRoot
+        if not root then continue end
+        local elapsed = tick() - State.PhaseStart
+        if State.Phase == "rage" and elapsed >= State.RageInterval then
+            State.Phase = "void"
+            State.PhaseStart = tick()
+        elseif State.Phase == "void" and elapsed >= State.VoidSpamInterval then
+            State.Phase = "rage"
+            State.PhaseStart = tick()
+        end
+        if State.Phase == "rage" then
+            local dest = computeDest(tgt, now, dt)
+            if State.DesyncEnabled then saveCF() end
+            pcall(function()
+                root.CFrame = dest
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.AssemblyAngularVelocity = Vector3.zero
+            end)
+            if (tick() - State.LastFire) >= FIRE_RATE then
+                State.LastFire = tick()
+                local item = getItem()
+                if item then
+                    local lookCF = CFrame.lookAt(dest.Position, tgt.head.Position)
+                    fireShot(item, tgt.head, dest.Position, lookCF)
+                end
+            end
+        elseif State.Phase == "void" then
+            if State.VoidSpamEnabled then
+                if State.DesyncEnabled then saveCF() end
+                pcall(function()
+                    root.CFrame = CFrame.new(0, State.VoidSpamHeight, 0)
+                    root.AssemblyLinearVelocity = Vector3.zero
+                end)
+            end
+        end
+    end
+end)
+
+local RagebotGroup = Tabs.Combat:AddLeftGroupbox("Ragebot")
+
+RagebotGroup:AddToggle("RageEnabled", {
+    Text = "Enable Ragebot",
+    Default = false,
+    Callback = function(v)
+        State.RageEnabled = v
+        if v then refreshCache(true) end
+    end,
+}):AddKeyPicker("RageKey", { Default = "None", NoUI = false, Text = "Rage" })
+
+RagebotGroup:AddToggle("VoidSpamToggle", {
+    Text = "Void Spam",
+    Default = false,
+    Callback = function(v) State.VoidSpamEnabled = v end,
+})
+
+RagebotGroup:AddSlider("RageIntervalSlider", {
+    Text = "Ragebot",
+    Default = 0.15, Min = 0.01, Max = 2, Rounding = 2, Compact = true,
+    Callback = function(v) State.RageInterval = v end,
+})
+
+RagebotGroup:AddSlider("VoidSpamSlider", {
+    Text = "Void Spam",
+    Default = 0.3, Min = 0.01, Max = 2, Rounding = 2, Compact = true,
+    Callback = function(v) State.VoidSpamInterval = v end,
+})
+
+RagebotGroup:AddToggle("OrbitToggle", {
+    Text = "Orbit",
+    Default = false,
+    Callback = function(v) State.OrbitEnabled = v end,
+})
+
+RagebotGroup:AddSlider("OrbitRadiusSlider", {
+    Text = "Orbit Radius",
+    Default = 4, Min = 1, Max = 20, Rounding = 1, Compact = true,
+    Callback = function(v) State.OrbitRadius = v end,
+})
+
+RagebotGroup:AddSlider("OrbitSpeedSlider", {
+    Text = "Orbit Speed",
+    Default = 10000, Min = 1, Max = 10000, Rounding = 0, Compact = true,
+    Callback = function(v) State.OrbitSpeed = v end,
+})
+
+RagebotGroup:AddToggle("DesyncToggle", {
+    Text = "Desync",
+    Default = true,
+    Callback = function(v) State.DesyncEnabled = v end,
+})
+
+local DrawLib = (type(Drawing) == "table") and Drawing or nil
+
+local function safeNew(kind)
+    if not DrawLib then return nil end
+    local ok, obj = pcall(DrawLib.new, kind)
+    if ok and obj then return obj end
+    return nil
+end
+
+local function worldToEspScreen(worldPos, cam)
+    cam = cam or workspace.CurrentCamera
+    if not cam then return Vector2.zero, false end
+    local v, on = cam:WorldToViewportPoint(worldPos)
+    return Vector2.new(v.X, v.Y), on and v.Z > 0
+end
+
+_G.Config = _G.Config or {
+    Box = {
+        MasterEnabled = false,
+        Enable = false,
+        OutlineColor = Color3.fromRGB(255, 255, 255),
+        OutlineColor2 = Color3.fromRGB(255, 255, 255),
+        Filled = { Enable = false, Transparency = 0.5 },
+        Healthbar = { Enable = false, Thickness = 4 },
+        HealthLerpColors = {
+            Color1 = Color3.fromRGB(255, 255, 255),
+            Color2 = Color3.fromRGB(255, 255, 255),
+            Color3 = Color3.fromRGB(255, 255, 255)
+        }
+    },
+    Filled = {
+        Enable = false, Transparency = 0.7,
+        ColorStart = Color3.fromRGB(255, 255, 255),
+        ColorEnd = Color3.fromRGB(255, 255, 255),
+        Rotation = 0, Animated = false, Speed = 1,
+    },
+    Glow = {
+        Enable = false, Transparency = 0.5,
+        ColorStart = Color3.fromRGB(255, 255, 255),
+        ColorEnd = Color3.fromRGB(255, 255, 255),
+        Rotation = 0,
+    },
+    TextESP = {
+        Names = false, Distance = false, Tools = false,
+        NameSize = 8, DistanceSize = 8, ToolsSize = 8,
+        NameColor = Color3.fromRGB(255, 255, 255),
+        NameColor2 = Color3.fromRGB(255, 255, 255),
+        DistanceColor = Color3.fromRGB(255, 255, 255),
+        DistanceColor2 = Color3.fromRGB(255, 255, 255),
+        ToolColor = Color3.fromRGB(255, 255, 255),
+        ToolColor2 = Color3.fromRGB(255, 255, 255)
+    },
+    Skeleton = {
+        Enable = false,
+        Color = Color3.fromRGB(255, 255, 255),
+        Color2 = Color3.fromRGB(255, 255, 255),
+        Thickness = 1
+    },
+    Tracers = {
+        Enable = false,
+        Color = Color3.fromRGB(255, 255, 255),
+        Color2 = Color3.fromRGB(255, 255, 255),
+        Thickness = 1,
+        FromBottom = true
+    },
+    Chams = {
+        Enable = false,
+        Color = Color3.fromRGB(255, 255, 255),
+        Color2 = Color3.fromRGB(255, 255, 255),
+        Transparency = 0
+    },
+    ESP = {
+        HighRefresh = true,
+        HealthLerpSpeed = 32,
+        TargetHz = 240,
+    }
+}
+_G.ESPObjects = _G.ESPObjects or {}
+local ConfigBox = _G.Config.Box
+local ESPObjects = _G.ESPObjects
+
+local espgui = Instance.new("ScreenGui")
+espgui.Name = "HydronESP"
+espgui.DisplayOrder = 9e9
+espgui.ResetOnSpawn = false
+espgui.IgnoreGuiInset = true
+pcall(function()
+    if syn and syn.protect_gui then syn.protect_gui(espgui) end
+end)
+local parentOk = pcall(function()
+    espgui.Parent = (gethui and gethui()) or game:GetService("CoreGui")
+end)
+if not parentOk or not espgui.Parent then
+    pcall(function() espgui.Parent = LP:WaitForChild("PlayerGui") end)
+end
+espgui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local fonts = { main = Font.fromEnum(Enum.Font.Code), ready = false }
+task.spawn(function()
+    local ok = pcall(function()
+        local fontid = "hydron_esp_font.ttf"
+        if not isfile(fontid) then
+            writefile(fontid, game:HttpGet("https://github.com/i77lhm/storage/raw/refs/heads/main/fonts/smallest_pixel-7.ttf"))
+        end
+        if isfile("hydron_esp_font.font") then delfile("hydron_esp_font.font") end
+        local fontdata = {
+            name = "HydronESPFont",
+            faces = {{ name = "Regular", weight = 400, style = "normal", assetId = getcustomasset(fontid) }}
+        }
+        writefile("hydron_esp_font.font", HttpService:JSONEncode(fontdata))
+        fonts.main = Font.new(getcustomasset("hydron_esp_font.font"))
+        fonts.ready = true
+    end)
+    if not ok then fonts.ready = true end
+end)
+
+local r15bones = {
+    {"UpperTorso", "Head"},
+    {"UpperTorso", "LowerTorso"},
+    {"UpperTorso", "LeftUpperArm"},
+    {"LeftUpperArm", "LeftLowerArm"},
+    {"LeftLowerArm", "LeftHand"},
+    {"UpperTorso", "RightUpperArm"},
+    {"RightUpperArm", "RightLowerArm"},
+    {"RightLowerArm", "RightHand"},
+    {"LowerTorso", "LeftUpperLeg"},
+    {"LeftUpperLeg", "LeftLowerLeg"},
+    {"LeftLowerLeg", "LeftFoot"},
+    {"LowerTorso", "RightUpperLeg"},
+    {"RightUpperLeg", "RightLowerLeg"},
+    {"RightLowerLeg", "RightFoot"}
+}
+local r6bones = {
+    {"Torso", "Head"},
+    {"Torso", "Left Arm"},
+    {"Torso", "Right Arm"},
+    {"Torso", "Left Leg"},
+    {"Torso", "Right Leg"}
+}
+
+local tickval = 0
+
+local function lerpcolor(a, b, t)
+    return Color3.new(
+        a.R + (b.R - a.R) * t,
+        a.G + (b.G - a.G) * t,
+        a.B + (b.B - a.B) * t
+    )
+end
+
+local function ensureTextGradient(label, color1, color2)
+    if not label then return end
+    local grad = label:FindFirstChild("EspTextGradient")
+    if not grad then
+        grad = Instance.new("UIGradient")
+        grad.Name = "EspTextGradient"
+        grad.Rotation = 0
+        grad.Parent = label
+    end
+    grad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, color1),
+        ColorSequenceKeypoint.new(1, color2),
+    })
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+end
+
+local function hpcolor(pct)
+    local hc = ConfigBox.HealthLerpColors or {
+        Color1 = Color3.fromRGB(0, 255, 0),
+        Color2 = Color3.fromRGB(255, 255, 0),
+        Color3 = Color3.fromRGB(255, 0, 0)
+    }
+    if pct > 0.5 then
+        return lerpcolor(hc.Color2, hc.Color1, (pct - 0.5) * 2)
+    else
+        return lerpcolor(hc.Color3, hc.Color2, pct * 2)
+    end
+end
+
+local function checkteammate(player)
+    if not player or player == LP then return true end
+    local myTeam = LP:GetAttribute("TeamID")
+    local theirTeam = player:GetAttribute("TeamID")
+    if myTeam == nil or theirTeam == nil then
+        if not LP.Team or not player.Team then
+            return false
+        end
+        return LP.Team == player.Team
+    end
+    return myTeam == theirTeam
+end
+
+local function findBonePart(char, name)
+    local part = char:FindFirstChild(name)
+    if part and part:IsA("BasePart") then return part end
+    local aliases = {
+        ["Left Arm"] = {"LeftArm", "LeftUpperArm"},
+        ["Right Arm"] = {"RightArm", "RightUpperArm"},
+        ["Left Leg"] = {"LeftLeg", "LeftUpperLeg"},
+        ["Right Leg"] = {"RightLeg", "RightUpperLeg"},
+        ["Torso"] = {"UpperTorso", "LowerTorso"},
+    }
+    for _, alt in ipairs(aliases[name] or {}) do
+        part = char:FindFirstChild(alt)
+        if part and part:IsA("BasePart") then return part end
+    end
+    return nil
+end
+
+local function espknock(player)
+    local char = player.Character
+    if not char then return false end
+    local bodyEffects = char:FindFirstChild("BodyEffects")
+    if bodyEffects then
+        local ko = bodyEffects:FindFirstChild("K.O") or bodyEffects:FindFirstChild("KO")
+        return ko and ko.Value
+    end
+    return false
+end
+
+local function dist2(player)
+    local char = player.Character
+    local myChar = LP.Character
+    if char and myChar then
+        local root = char:FindFirstChild("HumanoidRootPart")
+        local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+        if root and myRoot then
+            return (root.Position - myRoot.Position).Magnitude
+        end
+    end
+    return math.huge
+end
+
+local function getEspPlayerWeapon(player)
+    if not player then return "" end
+    local ok, name = pcall(function()
+        local s, r = pcall(function()
+            return require(LP.PlayerScripts.Controllers.FighterController)
+        end)
+        local fc = s and r or nil
+        if fc and type(fc.GetFighter) == "function" then
+            local s2, fighter = pcall(fc.GetFighter, fc, player)
+            if s2 and fighter then
+                local item = fighter.EquippedItem
+                if item then
+                    if type(item.Get) == "function" then
+                        return tostring(item:Get("Name") or item:Get("ItemName") or "")
+                    end
+                    return tostring(item.Name or item.ItemName or "")
+                end
+            end
+        end
+        return nil
+    end)
+    if ok and name and name ~= "" and name ~= "nil" then return name end
+    local char = player.Character
+    if char then
+        for _, ch in ipairs(char:GetChildren()) do
+            if ch:IsA("Tool") then return ch.Name end
+        end
+        local attr = char:GetAttribute("EquippedItem") or char:GetAttribute("Weapon") or char:GetAttribute("CurrentWeapon")
+        if attr then return tostring(attr) end
+        local held = char:FindFirstChild("Item") or char:FindFirstChild("Weapon")
+        if held then return held.Name end
+    end
+    return ""
+end
+
+local function playerweap(player)
+    local ok, r = pcall(getEspPlayerWeapon, player)
+    if ok and r and r ~= "" then return r end
+    return ""
+end
+
+local function makelabel(parent)
+    local label = Instance.new("TextLabel")
+    label.Parent = parent
+    label.Size = UDim2.new(0, 200, 0, 20)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextStrokeTransparency = 0
+    label.TextScaled = false
+    label.TextSize = 6
+    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    label.FontFace = fonts.main
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextYAlignment = Enum.TextYAlignment.Top
+    return label
+end
+
+local function CreateCham(char)
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "HydronESPHighlight"
+    highlight.Adornee = char
+    highlight.FillColor = _G.Config.Chams.Color
+    highlight.OutlineColor = _G.Config.Chams.Color2 or _G.Config.Chams.Color
+    highlight.FillTransparency = _G.Config.Chams.Transparency
+    highlight.OutlineTransparency = math.clamp(_G.Config.Chams.Transparency, 0, 1)
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Parent = char
+    return highlight
+end
+
+local function CreateBox(player)
+    if ESPObjects[player] then return end
+    if not DrawLib then return end
+
+    local sq = safeNew("Square")
+    local ol = safeNew("Square")
+    local il = safeNew("Square")
+    if not (sq and ol and il) then return end
+
+    local box = {}
+    box.box = { square = sq, outline = ol, inline = il }
+
+    box.filled = Instance.new("Frame")
+    box.filled.BackgroundColor3 = Color3.new(1, 1, 1)
+    box.filled.BackgroundTransparency = _G.Config.Filled.Transparency
+    box.filled.BorderSizePixel = 0
+    box.filled.Visible = false
+    box.filled.ZIndex = 2
+    box.filled.Parent = espgui
+    box.filled_gradient = Instance.new("UIGradient")
+    box.filled_gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, _G.Config.Filled.ColorStart),
+        ColorSequenceKeypoint.new(1, _G.Config.Filled.ColorEnd),
+    })
+    box.filled_gradient.Rotation = 0
+    box.filled_gradient.Parent = box.filled
+
+    box.glow = Instance.new("ImageLabel")
+    box.glow.Image = "rbxassetid://110204605000367"
+    box.glow.ScaleType = Enum.ScaleType.Slice
+    box.glow.SliceCenter = Rect.new(Vector2.new(21, 21), Vector2.new(79, 79))
+    box.glow.AutomaticSize = Enum.AutomaticSize.XY
+    box.glow.ImageTransparency = _G.Config.Glow.Transparency
+    box.glow.ResampleMode = Enum.ResamplerMode.Pixelated
+    box.glow.BackgroundTransparency = 1
+    box.glow.BorderSizePixel = 0
+    box.glow.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    box.glow.ZIndex = 1
+    box.glow.Visible = false
+    box.glow.Parent = espgui
+    box.glow_gradient = Instance.new("UIGradient")
+    box.glow_gradient.Rotation = _G.Config.Glow.Rotation
+    box.glow_gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, _G.Config.Glow.ColorStart),
+        ColorSequenceKeypoint.new(1, _G.Config.Glow.ColorEnd),
+    })
+    box.glow_gradient.Parent = box.glow
+    local glowpadding = Instance.new("UIPadding")
+    glowpadding.PaddingTop    = UDim.new(0, 21)
+    glowpadding.PaddingBottom = UDim.new(0, 20)
+    glowpadding.PaddingLeft   = UDim.new(0, 21)
+    glowpadding.PaddingRight  = UDim.new(0, 20)
+    glowpadding.Parent = box.glow
+
+    box.bars = { hp_bars = {}, hp_outline = safeNew("Square"), last_hp = 1 }
+    for i = 1, 50 do
+        local ln = safeNew("Line")
+        if ln then box.bars.hp_bars[i] = ln end
+    end
+
+    box.skeleton = { lines = {}, outlines = {} }
+    for i = 1, 15 do
+        local o = safeNew("Line")
+        local l = safeNew("Line")
+        if o and l then
+            o.Color = Color3.new(0, 0, 0)
+            o.Thickness = 3
+            o.Visible = false
+            l.Color = Color3.new(1, 1, 1)
+            l.Thickness = 1
+            l.Visible = false
+            box.skeleton.outlines[i] = o
+            box.skeleton.lines[i] = l
+        end
+    end
+
+    box.text = {}
+    box.text.studs = makelabel(espgui)
+    box.text.tool = makelabel(espgui)
+    box.text.name = makelabel(espgui)
+
+    box.Tracer = safeNew("Line")
+    if box.Tracer then
+        box.Tracer.Visible = false
+        box.Tracer.Color = _G.Config.Tracers.Color or Color3.fromRGB(255, 255, 255)
+        box.Tracer.Thickness = _G.Config.Tracers.Thickness or 1
+    end
+
+    ESPObjects[player] = box
+end
+
+local function RemoveBox(player)
+    if ESPObjects[player] then
+        local box = ESPObjects[player]
+        if box.box then
+            if box.box.square then box.box.square:Remove() end
+            if box.box.outline then box.box.outline:Remove() end
+            if box.box.inline then box.box.inline:Remove() end
+        end
+        if box.filled then box.filled:Destroy() end
+        if box.glow then box.glow:Destroy() end
+        if box.text then
+            if box.text.studs then box.text.studs:Destroy() end
+            if box.text.tool then box.text.tool:Destroy() end
+            if box.text.name then box.text.name:Destroy() end
+        end
+        if box.bars then
+            if box.bars.hp_outline then box.bars.hp_outline:Remove() end
+            for _, line in pairs(box.bars.hp_bars) do
+                line:Remove()
+            end
+        end
+        if box.skeleton then
+            for _, line in pairs(box.skeleton.lines) do line:Remove() end
+            for _, outline in pairs(box.skeleton.outlines) do outline:Remove() end
+        end
+        if box.Tracer then box.Tracer:Remove() end
+        if box.Cham then box.Cham:Destroy() end
+        ESPObjects[player] = nil
+    end
+end
+
+local function hideesp(player)
+    if not ESPObjects[player] then return end
+    local box = ESPObjects[player]
+    if box.box then
+        if box.box.square then box.box.square.Visible = false end
+        if box.box.outline then box.box.outline.Visible = false end
+        if box.box.inline then box.box.inline.Visible = false end
+    end
+    if box.filled then box.filled.Visible = false end
+    if box.glow then box.glow.Visible = false end
+    if box.text then
+        box.text.studs.Visible = false
+        box.text.tool.Visible = false
+        box.text.name.Visible = false
+    end
+    if box.bars then
+        if box.bars.hp_outline then box.bars.hp_outline.Visible = false end
+        for _, line in pairs(box.bars.hp_bars) do line.Visible = false end
+    end
+    if box.skeleton then
+        for _, line in pairs(box.skeleton.lines) do line.Visible = false end
+        for _, outline in pairs(box.skeleton.outlines) do outline.Visible = false end
+    end
+    if box.Tracer then box.Tracer.Visible = false end
+    if box.Cham then box.Cham.Enabled = false end
+end
+
+local function updatecham(player, box, char)
+    if not _G.Config.Chams.Enable then
+        if box.Cham then box.Cham.Enabled = false end
+        return
+    end
+    if not box.Cham or not box.Cham.Parent then
+        box.Cham = CreateCham(char)
+    end
+    if box.Cham then
+        box.Cham.Enabled = true
+        box.Cham.FillColor = _G.Config.Chams.Color
+        box.Cham.OutlineColor = _G.Config.Chams.Color2 or _G.Config.Chams.Color
+        box.Cham.FillTransparency = _G.Config.Chams.Transparency
+        box.Cham.OutlineTransparency = math.clamp(_G.Config.Chams.Transparency, 0, 1)
+    end
+end
+
+local function drawskeleton(player, box, char, hum, size, position)
+    if not _G.Config.Skeleton.Enable then
+        for _, line in pairs(box.skeleton.lines) do line.Visible = false end
+        for _, outline in pairs(box.skeleton.outlines) do outline.Visible = false end
+        return
+    end
+    local bones = (hum.RigType == Enum.HumanoidRigType.R15) and r15bones or r6bones
+    local skelColor = _G.Config.Skeleton.Color or Color3.fromRGB(255, 255, 255)
+    local skelColor2 = _G.Config.Skeleton.Color2 or skelColor
+    local skelThickness = _G.Config.Skeleton.Thickness or 1
+    for i = 1, 15 do
+        local boneset = bones[i]
+        local line = box.skeleton.lines[i]
+        local outline = box.skeleton.outlines[i]
+        if boneset and line and outline then
+            local parta = findBonePart(char, boneset[1])
+            local partb = findBonePart(char, boneset[2])
+            if parta and partb then
+                local va, vaOk = worldToEspScreen(parta.Position)
+                local vb, vbOk = worldToEspScreen(partb.Position)
+                if vaOk and vbOk then
+                    local pos2 = Vector2.new(va.X, va.Y)
+                    local endpos = Vector2.new(vb.X, vb.Y)
+                    local midX = (pos2.X + endpos.X) * 0.5
+                    local lineColor = midX >= pos2.X and lerpcolor(skelColor, skelColor2, math.clamp((midX - pos2.X) / math.max(math.abs(endpos.X - pos2.X), 1), 0, 1)) or skelColor
+                    outline.Visible = true
+                    outline.From = pos2
+                    outline.To = endpos
+                    outline.Thickness = skelThickness + 2
+                    outline.Color = Color3.new(0, 0, 0)
+                    line.Visible = true
+                    line.From = pos2
+                    line.To = endpos
+                    line.Color = lineColor
+                    line.Thickness = skelThickness
+                else
+                    line.Visible = false
+                    outline.Visible = false
+                end
+            else
+                line.Visible = false
+                outline.Visible = false
+            end
+        end
+    end
+end
+
+local function drawhealthbar(player, box, hum, size, position, dt)
+    if not (ConfigBox.Healthbar and ConfigBox.Healthbar.Enable) or not box.bars.hp_outline then
+        if box.bars.hp_outline then box.bars.hp_outline.Visible = false end
+        for _, line in pairs(box.bars.hp_bars) do line.Visible = false end
+        return
+    end
+    local target = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+    local last = box.bars.last_hp or target
+    local espCfg = _G.Config.ESP or {}
+    local lerpSpeed = espCfg.HealthLerpSpeed or 32
+    if espCfg.HighRefresh ~= false then
+        dt = dt or (1 / (espCfg.TargetHz or 240))
+        local lerped = last + (target - last) * math.min(1, dt * lerpSpeed)
+        box.bars.last_hp = lerped
+    else
+        box.bars.last_hp = last + (target - last) * 0.05
+    end
+    local lerped = box.bars.last_hp
+    local h = math.ceil(size.Y * lerped)
+    local hpx = position.X - 5
+    local hpystart = position.Y + (size.Y - h)
+    box.bars.hp_outline.Visible = true
+    box.bars.hp_outline.Position = Vector2.new(hpx - 1, position.Y - 1)
+    box.bars.hp_outline.Size = Vector2.new(3, size.Y + 2)
+    box.bars.hp_outline.Color = Color3.new(0, 0, 0)
+    box.bars.hp_outline.Filled = false
+    local segments = math.max(math.min(math.floor(h / 2), 50), 10)
+    for i = 1, 50 do
+        local line = box.bars.hp_bars[i]
+        if line then
+            if i <= segments then
+                local segmentheight = h / segments
+                local yoffset = (i - 1) * segmentheight
+                local pospct = 1 - ((yoffset + (size.Y - h)) / size.Y)
+                line.Visible = true
+                line.From = Vector2.new(hpx, hpystart + yoffset)
+                line.To = Vector2.new(hpx + 1, hpystart + yoffset)
+                line.Color = hpcolor(pospct)
+                line.Thickness = math.max(segmentheight, 1)
+            else
+                line.Visible = false
+            end
+        end
+    end
+end
+
+local function drawbox(player, box, size, position)
+    if not (ConfigBox.MasterEnabled and ConfigBox.Enable) or not box.box.square then
+        if box.box.square then box.box.square.Visible = false end
+        if box.box.outline then box.box.outline.Visible = false end
+        if box.box.inline then box.box.inline.Visible = false end
+        return
+    end
+    local w = math.max(math.floor(size.X), 4)
+    local h = math.max(math.floor(size.Y), 8)
+    size = Vector2.new(w, h)
+    position = Vector2.new(math.floor(position.X), math.floor(position.Y))
+    box.box.square.Visible = true
+    box.box.square.Position = position
+    box.box.square.Size = size
+    local boxColor2 = ConfigBox.OutlineColor2 or ConfigBox.OutlineColor
+    box.box.square.Color = lerpcolor(ConfigBox.OutlineColor, boxColor2, 0.5)
+    box.box.square.Thickness = 1
+    box.box.square.Filled = false
+    box.box.outline.Visible = true
+    box.box.outline.Position = position - Vector2.new(1, 1)
+    box.box.outline.Size = size + Vector2.new(2, 2)
+    box.box.outline.Color = Color3.new(0, 0, 0)
+    box.box.outline.Thickness = 1
+    box.box.outline.Filled = false
+    box.box.inline.Visible = true
+    box.box.inline.Position = position + Vector2.new(1, 1)
+    box.box.inline.Size = Vector2.new(math.max(w - 2, 2), math.max(h - 2, 4))
+    box.box.inline.Color = Color3.new(0, 0, 0)
+    box.box.inline.Thickness = 1
+    box.box.inline.Filled = false
+end
+
+local function drawfill(player, box, size, position)
+    local cfg = _G.Config.Filled
+    if not cfg.Enable then
+        box.filled.Visible = false
+        return
+    end
+    box.filled.Visible = true
+    box.filled.BackgroundTransparency = cfg.Transparency
+    box.filled.Position = UDim2.fromOffset(position.X, position.Y)
+    box.filled.Size = UDim2.fromOffset(size.X, size.Y)
+    box.filled_gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, cfg.ColorStart),
+        ColorSequenceKeypoint.new(1, cfg.ColorEnd),
+    })
+    if cfg.Animated then
+        box.filled_gradient.Rotation = (math.sin(tickval * cfg.Speed) * 90) + cfg.Rotation
+    else
+        box.filled_gradient.Rotation = cfg.Rotation
+    end
+end
+
+local function drawglow(player, box, size, position)
+    local cfg = _G.Config.Glow
+    if not cfg.Enable or not (ConfigBox.MasterEnabled and ConfigBox.Enable) then
+        box.glow.Visible = false
+        return
+    end
+    box.glow.Visible = true
+    box.glow.ImageTransparency = cfg.Transparency
+    box.glow.ImageColor3 = cfg.ColorStart
+    box.glow.Position = UDim2.fromOffset(position.X - 21, position.Y - 21)
+    box.glow.Size = UDim2.fromOffset(size.X + 42, size.Y + 42)
+    box.glow_gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, cfg.ColorStart),
+        ColorSequenceKeypoint.new(1, cfg.ColorEnd),
+    })
+    box.glow_gradient.Rotation = 0
+end
+
+local function drawtext(player, box, size, position, distance)
+    local cx = position.X + (size.X / 2)
+    local topY = position.Y
+    local botY = position.Y + size.Y
+    if _G.Config.TextESP and _G.Config.TextESP.Names then
+        box.text.name.Visible = true
+        box.text.name.Position = UDim2.fromOffset(cx - 100, topY - 18)
+        box.text.name.Text = player.DisplayName or player.Name
+        box.text.name.TextSize = _G.Config.TextESP.NameSize or 13
+        ensureTextGradient(box.text.name, _G.Config.TextESP.NameColor or Color3.fromRGB(255, 255, 255), _G.Config.TextESP.NameColor2 or _G.Config.TextESP.NameColor or Color3.fromRGB(255, 255, 255))
+        box.text.name.TextXAlignment = Enum.TextXAlignment.Center
+    else
+        box.text.name.Visible = false
+    end
+    if _G.Config.TextESP and _G.Config.TextESP.Tools then
+        box.text.tool.Visible = true
+        box.text.tool.Position = UDim2.fromOffset(position.X + size.X + 5, topY)
+        box.text.tool.Text = playerweap(player)
+        box.text.tool.TextSize = _G.Config.TextESP.ToolsSize or 11
+        ensureTextGradient(box.text.tool, _G.Config.TextESP.ToolColor or Color3.fromRGB(255, 255, 255), _G.Config.TextESP.ToolColor2 or _G.Config.TextESP.ToolColor or Color3.fromRGB(255, 255, 255))
+        box.text.tool.TextXAlignment = Enum.TextXAlignment.Left
+    else
+        box.text.tool.Visible = false
+    end
+    if _G.Config.TextESP and _G.Config.TextESP.Distance then
+        box.text.studs.Visible = true
+        box.text.studs.Position = UDim2.fromOffset(cx - 100, botY + 16)
+        box.text.studs.Text = string.format("%.0f studs", distance)
+        box.text.studs.TextSize = _G.Config.TextESP.DistanceSize or 11
+        ensureTextGradient(box.text.studs, _G.Config.TextESP.DistanceColor or Color3.fromRGB(255, 255, 255), _G.Config.TextESP.DistanceColor2 or _G.Config.TextESP.DistanceColor or Color3.fromRGB(255, 255, 255))
+        box.text.studs.TextXAlignment = Enum.TextXAlignment.Center
+    else
+        box.text.studs.Visible = false
+    end
+end
+
+local function drawtracers(player, box, root)
+    if not (_G.Config.Tracers and _G.Config.Tracers.Enable) or not box.Tracer then
+        if box.Tracer then box.Tracer.Visible = false end
+        return
+    end
+    local pos, vis = worldToEspScreen(root.Position)
+    if vis then
+        box.Tracer.Visible = true
+        box.Tracer.To = Vector2.new(pos.X, pos.Y)
+        local cam = workspace.CurrentCamera
+        local vs = cam and cam.ViewportSize or Vector2.new(1920, 1080)
+        local fromY = (_G.Config.Tracers.FromBottom == nil or _G.Config.Tracers.FromBottom) and vs.Y or (vs.Y / 2)
+        box.Tracer.From = Vector2.new(vs.X / 2, fromY)
+        box.Tracer.Color = lerpcolor(_G.Config.Tracers.Color or Color3.fromRGB(255, 255, 255), _G.Config.Tracers.Color2 or _G.Config.Tracers.Color or Color3.fromRGB(255, 255, 255), 0.5)
+        box.Tracer.Thickness = _G.Config.Tracers.Thickness or 1
+    else
+        box.Tracer.Visible = false
+    end
+end
+
+local function updateesp(player, dt)
+    if not player then return end
+    if not ESPObjects[player] then
+        pcall(CreateBox, player)
+        if not ESPObjects[player] then return end
+    end
+    if not ConfigBox.MasterEnabled then
+        hideesp(player)
+        return
+    end
+    if player == LP or checkteammate(player) then
+        hideesp(player)
+        return
+    end
+    local char = player.Character
+    if not char or not char.Parent then
+        hideesp(player)
+        return
+    end
+    if espknock(player) then
+        hideesp(player)
+        return
+    end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildWhichIsA("Humanoid")
+    if not root or not hum then
+        hideesp(player)
+        return
+    end
+    if hum.Health <= 0 or hum:GetState() == Enum.HumanoidStateType.Dead then
+        hideesp(player)
+        return
+    end
+    local hrp2d, hrpOk = worldToEspScreen(root.Position)
+    if not hrpOk then
+        hideesp(player)
+        return
+    end
+    local distance = dist2(player)
+    local head = char:FindFirstChild("Head")
+    local topWorld = (head and head.Position + Vector3.new(0, 0.6, 0)) or (root.Position + Vector3.new(0, 2.8, 0))
+    local bottomWorld = root.Position - Vector3.new(0, 3.0, 0)
+    local top2d, topOk = worldToEspScreen(topWorld)
+    local bottom2d, bottomOk = worldToEspScreen(bottomWorld)
+    local size, position
+    if topOk and bottomOk then
+        local boxHeight = math.abs(bottom2d.Y - top2d.Y)
+        local boxWidth = math.max(boxHeight * 0.55, 10)
+        size = Vector2.new(math.max(math.floor(boxWidth), 6), math.max(math.floor(math.max(boxHeight, 12)), 10))
+        position = Vector2.new(math.floor(hrp2d.X - size.X / 2), math.floor(math.min(top2d.Y, bottom2d.Y)))
+    else
+        size = Vector2.new(40, 70)
+        position = Vector2.new(math.floor(hrp2d.X - 20), math.floor(hrp2d.Y - 35))
+    end
+    local box = ESPObjects[player]
+    local cfg = _G.Config
+    drawfill(player, box, size, position)
+    drawbox(player, box, size, position)
+    drawglow(player, box, size, position)
+    if cfg.Skeleton and cfg.Skeleton.Enable then
+        drawskeleton(player, box, char, hum, size, position)
+    else
+        for _, line in pairs(box.skeleton.lines) do line.Visible = false end
+        for _, outline in pairs(box.skeleton.outlines) do outline.Visible = false end
+    end
+    drawhealthbar(player, box, hum, size, position, dt)
+    drawtext(player, box, size, position, distance)
+    if cfg.Tracers and cfg.Tracers.Enable then
+        drawtracers(player, box, root)
+    elseif box.Tracer then
+        box.Tracer.Visible = false
+    end
+    if cfg.Chams and cfg.Chams.Enable then
+        updatecham(player, box, char)
+    elseif box.Cham then
+        box.Cham.Enabled = false
+    end
+end
+
+local ESP_RENDER_BIND = "HydronXESPUpdate"
+local _espMasterWasOn = false
+local _espLast = 0
+
+local function stepEspUpdate(dt)
+    local now = os.clock()
+    local minDt = 1 / 60
+    if now - _espLast < minDt then return end
+    _espLast = now
+    dt = dt or minDt
+    local cam = workspace.CurrentCamera
+    if cam then Camera = cam end
+    tickval = now
+    if not ConfigBox.MasterEnabled then
+        if _espMasterWasOn then
+            _espMasterWasOn = false
+            for plr in pairs(ESPObjects) do
+                hideesp(plr)
+            end
+        end
+        return
+    end
+    _espMasterWasOn = true
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP then
+            updateesp(plr, dt)
+        end
+    end
+end
+
+local espBindOk = pcall(function()
+    RunService:UnbindFromRenderStep(ESP_RENDER_BIND)
+    RunService:BindToRenderStep(ESP_RENDER_BIND, Enum.RenderPriority.Camera.Value + 1, stepEspUpdate)
+end)
+if not espBindOk then
+    local lastEsp = 0
+    RunService.Heartbeat:Connect(function()
+        local now = tick()
+        if now - lastEsp < 0.033 then return end
+        lastEsp = now
+        stepEspUpdate()
+    end)
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= LP then
+        CreateBox(player)
+    end
+end
+Players.PlayerAdded:Connect(function(player)
+    if player ~= LP then
+        CreateBox(player)
+    end
+end)
+Players.PlayerRemoving:Connect(RemoveBox)
+
+task.wait()
+
+local ESPGroup = Tabs.Visuals:AddLeftGroupbox("ESP")
+
+ESPGroup:AddToggle('box_enabled', {
+    Text = 'enable',
+    Default = ConfigBox.MasterEnabled or false,
+    Callback = function(Value)
+        ConfigBox.MasterEnabled = Value
+        if Value then
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LP and not ESPObjects[plr] then
+                    pcall(CreateBox, plr)
+                end
+            end
+        else
+            for plr in pairs(ESPObjects) do
+                pcall(hideesp, plr)
+            end
+        end
+    end
+})
+
+local BoxDepBox = ESPGroup:AddDependencyBox()
+BoxDepBox:AddToggle('box_enabled2', {
+    Text = 'boxes',
+    Default = ConfigBox.Enable or false,
+    Callback = function(Value)
+        ConfigBox.Enable = Value
+    end
+}):AddColorPicker('box_outline_color', {
+    Title = 'box color 1',
+    Default = ConfigBox.OutlineColor or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        ConfigBox.OutlineColor = Value
+    end
+}):AddColorPicker('box_outline_color2', {
+    Title = 'box color 2',
+    Default = ConfigBox.OutlineColor2 or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        ConfigBox.OutlineColor2 = Value
+    end
+})
+BoxDepBox:AddToggle('box_filled', {
+    Text = 'box fill',
+    Default = _G.Config.Filled.Enable or false,
+    Callback = function(Value)
+        _G.Config.Filled.Enable = Value
+    end
+}):AddColorPicker('box_filled_color_start', {
+    Title = 'fill color start',
+    Default = _G.Config.Filled.ColorStart or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.Filled.ColorStart = Value
+    end
+}):AddColorPicker('box_filled_color_end', {
+    Title = 'fill color end',
+    Default = _G.Config.Filled.ColorEnd or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.Filled.ColorEnd = Value
+    end
+})
+BoxDepBox:AddToggle('box_filled_animated', {
+    Text = 'fill rotation',
+    Default = _G.Config.Filled.Animated or false,
+    Callback = function(Value)
+        _G.Config.Filled.Animated = Value
+    end
+})
+BoxDepBox:AddToggle('box_glow', {
+    Text = 'glow',
+    Default = _G.Config.Glow.Enable or false,
+    Callback = function(Value)
+        _G.Config.Glow.Enable = Value
+    end
+}):AddColorPicker('box_glow_color_start', {
+    Title = 'glow color start',
+    Default = _G.Config.Glow.ColorStart or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.Glow.ColorStart = Value
+    end
+}):AddColorPicker('box_glow_color_end', {
+    Title = 'glow color end',
+    Default = _G.Config.Glow.ColorEnd or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.Glow.ColorEnd = Value
+    end
+})
+BoxDepBox:AddToggle('healthbar', {
+    Text = 'healthbar',
+    Default = (ConfigBox.Healthbar and ConfigBox.Healthbar.Enable) or false,
+    Callback = function(Value)
+        if not ConfigBox.Healthbar then
+            ConfigBox.Healthbar = { Enable = false, Thickness = 4 }
+        end
+        ConfigBox.Healthbar.Enable = Value
+    end
+}):AddColorPicker('ColorPicker121212', {
+    Default = (ConfigBox.HealthLerpColors and ConfigBox.HealthLerpColors.Color1) or Color3.fromRGB(255, 255, 255),
+    Title = 'high health',
+    Transparency = 0,
+    Callback = function(Value)
+        if not ConfigBox.HealthLerpColors then
+            ConfigBox.HealthLerpColors = {
+                Color1 = Color3.fromRGB(255, 255, 255),
+                Color2 = Color3.fromRGB(255, 255, 255),
+                Color3 = Color3.fromRGB(255, 255, 255)
+            }
+        end
+        ConfigBox.HealthLerpColors.Color1 = Value
+    end
+}):AddColorPicker('ColorPicker21', {
+    Default = (ConfigBox.HealthLerpColors and ConfigBox.HealthLerpColors.Color2) or Color3.fromRGB(255, 255, 255),
+    Title = 'mid health',
+    Transparency = 0,
+    Callback = function(Value)
+        if not ConfigBox.HealthLerpColors then
+            ConfigBox.HealthLerpColors = {
+                Color1 = Color3.fromRGB(255, 255, 255),
+                Color2 = Color3.fromRGB(255, 255, 255),
+                Color3 = Color3.fromRGB(255, 255, 255)
+            }
+        end
+        ConfigBox.HealthLerpColors.Color2 = Value
+    end
+}):AddColorPicker('ColorPicker45', {
+    Default = (ConfigBox.HealthLerpColors and ConfigBox.HealthLerpColors.Color3) or Color3.fromRGB(255, 255, 255),
+    Title = 'low health',
+    Transparency = 0,
+    Callback = function(Value)
+        if not ConfigBox.HealthLerpColors then
+            ConfigBox.HealthLerpColors = {
+                Color1 = Color3.fromRGB(255, 255, 255),
+                Color2 = Color3.fromRGB(255, 255, 255),
+                Color3 = Color3.fromRGB(255, 255, 255)
+            }
+        end
+        ConfigBox.HealthLerpColors.Color3 = Value
+    end
+})
+ESPGroup:AddToggle('textesp', {
+    Text = 'names',
+    Default = _G.Config.TextESP.Names or false,
+    Callback = function(Value)
+        _G.Config.TextESP.Names = Value
+    end
+}):AddColorPicker('name_color', {
+    Title = 'name color 1',
+    Default = _G.Config.TextESP.NameColor or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.TextESP.NameColor = Value
+    end
+}):AddColorPicker('name_color2', {
+    Title = 'name color 2',
+    Default = _G.Config.TextESP.NameColor2 or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.TextESP.NameColor2 = Value
+    end
+})
+ESPGroup:AddToggle('textesp_distance', {
+    Text = 'distance',
+    Default = _G.Config.TextESP.Distance or false,
+    Callback = function(Value)
+        _G.Config.TextESP.Distance = Value
+    end
+}):AddColorPicker('distance_color', {
+    Title = 'distance color 1',
+    Default = _G.Config.TextESP.DistanceColor or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.TextESP.DistanceColor = Value
+    end
+}):AddColorPicker('distance_color2', {
+    Title = 'distance color 2',
+    Default = _G.Config.TextESP.DistanceColor2 or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.TextESP.DistanceColor2 = Value
+    end
+})
+ESPGroup:AddToggle('textesp_tools', {
+    Text = 'tools',
+    Default = _G.Config.TextESP.Tools or false,
+    Callback = function(Value)
+        _G.Config.TextESP.Tools = Value
+    end
+}):AddColorPicker('tool_color', {
+    Title = 'tool color 1',
+    Default = _G.Config.TextESP.ToolColor or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.TextESP.ToolColor = Value
+    end
+}):AddColorPicker('tool_color2', {
+    Title = 'tool color 2',
+    Default = _G.Config.TextESP.ToolColor2 or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.TextESP.ToolColor2 = Value
+    end
+})
+ESPGroup:AddToggle('skeleton', {
+    Text = 'skeleton',
+    Default = _G.Config.Skeleton.Enable or false,
+    Callback = function(Value)
+        _G.Config.Skeleton.Enable = Value
+    end
+}):AddColorPicker('skeleton_color', {
+    Title = 'skeleton color 1',
+    Default = _G.Config.Skeleton.Color or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.Skeleton.Color = Value
+    end
+}):AddColorPicker('skeleton_color2', {
+    Title = 'skeleton color 2',
+    Default = _G.Config.Skeleton.Color2 or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.Skeleton.Color2 = Value
+    end
+})
+ESPGroup:AddToggle('tracers', {
+    Text = 'tracers',
+    Default = _G.Config.Tracers.Enable or false,
+    Callback = function(Value)
+        _G.Config.Tracers.Enable = Value
+    end
+}):AddColorPicker('tracers_color', {
+    Title = 'tracer color 1',
+    Default = _G.Config.Tracers.Color or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.Tracers.Color = Value
+    end
+}):AddColorPicker('tracers_color2', {
+    Title = 'tracer color 2',
+    Default = _G.Config.Tracers.Color2 or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.Tracers.Color2 = Value
+    end
+})
+ESPGroup:AddToggle('chams', {
+    Text = 'chams',
+    Default = _G.Config.Chams.Enable or false,
+    Callback = function(Value)
+        _G.Config.Chams.Enable = Value
+    end
+}):AddColorPicker('chams_color', {
+    Title = 'chams color 1',
+    Default = _G.Config.Chams.Color or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.Chams.Color = Value
+    end
+}):AddColorPicker('chams_color2', {
+    Title = 'chams color 2',
+    Default = _G.Config.Chams.Color2 or Color3.fromRGB(255, 255, 255),
+    Transparency = false,
+    Callback = function(Value)
+        _G.Config.Chams.Color2 = Value
+    end
+})
+ESPGroup:AddSlider('box_filled_transparency', {
+    Text = 'fill transparency',
+    Default = _G.Config.Filled.Transparency or 0.7,
+    Min = 0, Max = 1, Rounding = 2, Compact = true,
+    Callback = function(Value)
+        _G.Config.Filled.Transparency = Value
+    end
+})
+ESPGroup:AddSlider('box_filled_rotation', {
+    Text = 'fill rotation',
+    Default = _G.Config.Filled.Rotation or 0,
+    Min = 0, Max = 360, Rounding = 0, Compact = true,
+    Callback = function(Value)
+        _G.Config.Filled.Rotation = Value
+    end
+})
+ESPGroup:AddSlider('box_filled_speed', {
+    Text = 'fill speed',
+    Default = _G.Config.Filled.Speed or 1,
+    Min = 0.1, Max = 10, Rounding = 1, Compact = true,
+    Callback = function(Value)
+        _G.Config.Filled.Speed = Value
+    end
+})
+ESPGroup:AddSlider('box_glow_transparency', {
+    Text = 'glow transparency',
+    Default = _G.Config.Glow.Transparency or 0.80,
+    Min = 0, Max = 1, Rounding = 2, Compact = true,
+    Callback = function(Value)
+        _G.Config.Glow.Transparency = Value
+    end
+})
+ESPGroup:AddSlider('box_glow_rotation', {
+    Text = 'glow rotation',
+    Default = _G.Config.Glow.Rotation or 0,
+    Min = 0, Max = 360, Rounding = 0, Compact = true,
+    Callback = function(Value)
+        _G.Config.Glow.Rotation = Value
+    end
+})
+ESPGroup:AddSlider('textesp_namesize', {
+    Text = 'name size',
+    Default = _G.Config.TextESP.NameSize or 8,
+    Min = 8, Max = 16, Rounding = 1, Compact = true,
+    Callback = function(Value)
+        _G.Config.TextESP.NameSize = Value
+    end
+})
+ESPGroup:AddSlider('textesp_distancesize', {
+    Text = 'distance size',
+    Default = _G.Config.TextESP.DistanceSize or 8,
+    Min = 8, Max = 14, Rounding = 1, Compact = true,
+    Callback = function(Value)
+        _G.Config.TextESP.DistanceSize = Value
+    end
+})
+ESPGroup:AddSlider('textesp_toolssize', {
+    Text = 'tools size',
+    Default = _G.Config.TextESP.ToolsSize or 8,
+    Min = 8, Max = 14, Rounding = 1, Compact = true,
+    Callback = function(Value)
+        _G.Config.TextESP.ToolsSize = Value
+    end
+})
+ESPGroup:AddSlider('skeleton_thickness', {
+    Text = 'skeleton thickness',
+    Default = _G.Config.Skeleton.Thickness or 1,
+    Min = 0.5, Max = 5, Rounding = 1, Compact = true,
+    Callback = function(Value)
+        _G.Config.Skeleton.Thickness = Value
+    end
+})
+ESPGroup:AddSlider('tracers_thickness', {
+    Text = 'tracer thickness',
+    Default = _G.Config.Tracers.Thickness or 1,
+    Min = 0.5, Max = 5, Rounding = 1, Compact = true,
+    Callback = function(Value)
+        _G.Config.Tracers.Thickness = Value
+    end
+})
+ESPGroup:AddSlider('chams_transparency', {
+    Text = 'chams transparency',
+    Default = _G.Config.Chams.Transparency or 0,
+    Min = 0, Max = 1, Rounding = 2, Compact = true,
+    Callback = function(Value)
+        _G.Config.Chams.Transparency = Value
+    end
+})
+
+local UnlockGroup = Tabs.Visuals:AddRightGroupbox("Unlock All (client-only)")
+
+UnlockGroup:AddToggle("SkinUnlockerToggle", {
+    Text = "Unlock All Skins",
+    Default = false,
+    Callback = function(v)
+        if not v then
+            Library:Notify("Skin unlocker off. Rejoin to reset.", 3)
+            return
+        end
+        local ok = pcall(function()
+            local modules = ReplicatedStorage:WaitForChild("Modules", 2)
+            local cosLib = require(modules:WaitForChild("CosmeticLibrary", 2))
+            local datCtrl = require(LP.PlayerScripts.Controllers:WaitForChild("PlayerDataController", 2))
+
+            local allTypes = {
+                Skin = true, Wrap = true, Charm = true, Dance = true, Emote = true,
+                Finisher = true, FinisherEffect = true, FinisherSound = true, KillEffect = true,
+            }
+            local function isAllType(c) return c and allTypes[c.Type] == true end
+
+            cosLib.OwnsCosmetic = function(_, _, nm) return isAllType(cosLib.Cosmetics[nm]) end
+            cosLib.OwnsCosmeticNormally = cosLib.OwnsCosmetic
+            cosLib.OwnsCosmeticUniversally = cosLib.OwnsCosmetic
+            cosLib.OwnsCosmeticForWeapon = cosLib.OwnsCosmetic
+
+            local origGet = datCtrl.Get
+            datCtrl.Get = function(self, key)
+                local val = origGet(self, key)
+                if key == "CosmeticInventory" then
+                    local proxy = {}
+                    if val then
+                        for k, vv in pairs(val) do
+                            if isAllType(cosLib.Cosmetics[k]) then proxy[k] = vv end
+                        end
+                    end
+                    return setmetatable(proxy, {
+                        __index = function(_, k)
+                            if isAllType(cosLib.Cosmetics[k]) then return true end
+                            return nil
+                        end,
+                    })
+                end
+                return val
+            end
+        end)
+        if ok then
+            Library:Notify("Unlock applied (local only)", 3)
+        else
+            Library:Notify("Unlock failed — game structure changed", 3)
+        end
+    end,
+})
+
+local RankCharmGroup = Tabs.Visuals:AddRightGroupbox("Rank Charm (visual overlay)")
+
+local SEASONS = {"Season 0", "Season 1", "Season 2", "Season 3"}
+local RANKS = {
+    "Unranked", "Bronze 1", "Bronze 2", "Bronze 3",
+    "Silver 1", "Silver 2", "Silver 3",
+    "Gold 1", "Gold 2", "Gold 3",
+    "Platinum 1", "Platinum 2", "Platinum 3",
+    "Diamond 1", "Diamond 2", "Diamond 3",
+    "Onyx 1", "Onyx 2", "Onyx 3",
+    "Nemesis", "Archnemesis"
+}
+
+local rankCharmState = {
+    enabled = false,
+    season = "Season 0",
+    rank = "Nemesis",
+    textureId = "",
+    appliedObjects = {},
+}
+
+local function clearCharmOverlay()
+    for _, obj in pairs(rankCharmState.appliedObjects) do
+        pcall(function() obj:Destroy() end)
+    end
+    rankCharmState.appliedObjects = {}
+end
+
+local function findCharmAttachment(vm)
+    if not vm then return nil end
+    local candidates = {}
+    for _, d in ipairs(vm:GetDescendants()) do
+        if d:IsA("BasePart") or d:IsA("MeshPart") then
+            local n = string.lower(d.Name)
+            if n:find("charm", 1, true) then
+                table.insert(candidates, d)
+            end
+        end
+    end
+    return candidates[1]
+end
+
+local function applyCharmOverlay()
+    clearCharmOverlay()
+    if not rankCharmState.enabled then return end
+    if rankCharmState.textureId == "" then return end
+
+    pcall(function()
+        local fc = require(LP.PlayerScripts.Controllers.FighterController)
+        local lf = fc and fc.LocalFighter
+        if not lf then return end
+        local item = lf.EquippedItem
+        if not item then return end
+        local vm = rawget(item, "ViewModel")
+        if not vm then return end
+        local model = rawget(vm, "Model") or rawget(vm, "Instance")
+        if not model then
+            for _, d in ipairs(Workspace:GetDescendants()) do
+                if d:IsA("Model") and d:FindFirstChild("Humanoid") == nil then
+                    local owner = d:GetAttribute("Owner") or d:GetAttribute("Player")
+                    if owner == LP.UserId or owner == LP.Name then
+                        model = d
+                        break
+                    end
+                end
+            end
+        end
+        if not model then return end
+        local target = findCharmAttachment(model)
+        if not target then return end
+        local decal = Instance.new("Decal")
+        decal.Name = "HydronCharmOverlay"
+        decal.Texture = "rbxassetid://" .. tostring(rankCharmState.textureId):gsub("%D", "")
+        decal.Face = Enum.NormalId.Front
+        decal.Parent = target
+        table.insert(rankCharmState.appliedObjects, decal)
+        local decal2 = Instance.new("Decal")
+        decal2.Name = "HydronCharmOverlayB"
+        decal2.Texture = decal.Texture
+        decal2.Face = Enum.NormalId.Back
+        decal2.Parent = target
+        table.insert(rankCharmState.appliedObjects, decal2)
+    end)
+end
+
+RankCharmGroup:AddToggle("RankCharmEnabled", {
+    Text = "Enable Overlay",
+    Default = false,
+    Callback = function(v)
+        rankCharmState.enabled = v
+        if v then
+            applyCharmOverlay()
+        else
+            clearCharmOverlay()
+        end
+    end,
+})
+
+RankCharmGroup:AddDropdown("RankCharmSeason", {
+    Text = "Season",
+    Values = SEASONS,
+    Default = "Season 0",
+    Multi = false,
+    Callback = function(v)
+        rankCharmState.season = v
+    end,
+})
+
+RankCharmGroup:AddDropdown("RankCharmRank", {
+    Text = "Rank",
+    Values = RANKS,
+    Default = "Nemesis",
+    Multi = false,
+    Callback = function(v)
+        rankCharmState.rank = v
+    end,
+})
+
+RankCharmGroup:AddInput("RankCharmTexture", {
+    Text = "Charm Texture ID",
+    Default = "",
+    Placeholder = "예: 1234567890",
+    Numeric = true,
+    Finished = true,
+    Callback = function(t)
+        rankCharmState.textureId = tostring(t or "")
+        if rankCharmState.enabled then
+            applyCharmOverlay()
+        end
+    end,
+})
+
+RankCharmGroup:AddButton("Apply Overlay", function()
+    if not rankCharmState.enabled then
+        Library:Notify("Enable Overlay first", 2)
+        return
+    end
+    applyCharmOverlay()
+end)
+
+task.spawn(function()
+    local lastItem = nil
+    while true do
+        task.wait(1)
+        if rankCharmState.enabled then
+            pcall(function()
+                local fc = require(LP.PlayerScripts.Controllers.FighterController)
+                local item = fc and fc.LocalFighter and fc.LocalFighter.EquippedItem
+                if item and item ~= lastItem then
+                    lastItem = item
+                    applyCharmOverlay()
+                end
+            end)
+        else
+            lastItem = nil
+        end
+    end
+end)
+
+local SettingsGroup = Tabs.Misc:AddLeftGroupbox("Settings")
+
+SettingsGroup:AddButton("Force Reload Cache", function()
+    refreshCache(true)
+    Library:Notify("Cache reloaded", 2)
+end)
+
+SettingsGroup:AddButton("Unload Script", function()
+    RunService:UnbindFromRenderStep("HydronXDesyncRestore")
+    RunService:UnbindFromRenderStep("HydronXESPUpdate")
+    clearCharmOverlay()
+    pcall(function() espgui:Destroy() end)
+    Library:Unload()
+end)
+
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({})
+ThemeManager:SetFolder("HydronX")
+SaveManager:SetFolder("HydronX")
+SaveManager:BuildConfigSection(Tabs["UI Settings"])
+ThemeManager:ApplyToTab(Tabs["UI Settings"])
