@@ -1900,6 +1900,45 @@ task.spawn(function()
 	end
 end)
 
+local function isSemiWeapon(item)
+	if not item then return false end
+	local name = ""
+	pcall(function()
+		name = tostring(item.Name or (item.Get and item:Get("Name")) or "")
+	end)
+	name = string.lower(name)
+	local autoKeys = {
+		"smg", "rifle", "assault", "ak", "m4", "tommy", "minigun", "lmg",
+		"auto", "spray", "uzi", "mp5", "mp7", "vector", "p90", "scar",
+		"carbine", "machine", "burst",
+	}
+	for _, k in ipairs(autoKeys) do
+		if string.find(name, k, 1, true) then return false end
+	end
+	local semiKeys = {
+		"pistol", "revolver", "deagle", "handgun", "glock", "m1911",
+		"magnum", "python", "desert", "usp", "beretta", "colt",
+		"sidearm", "flare",
+	}
+	for _, k in ipairs(semiKeys) do
+		if string.find(name, k, 1, true) then return true end
+	end
+	local auto = false
+	pcall(function()
+		local info = item.Info
+		if type(info) == "table" then
+			if info.Automatic == true or info.IsAutomatic == true or info.FullAuto == true then
+				auto = true
+			end
+			local mode = tostring(info.FireMode or info.ShootMode or info.Mode or ""):lower()
+			if mode:find("auto") or mode:find("spray") then auto = true end
+			if mode:find("semi") or mode:find("single") then auto = false end
+		end
+	end)
+	if auto then return false end
+	return true
+end
+
 local function forceZeroInfo(info)
 	if type(info) ~= "table" then return end
 	for k, v in pairs(info) do
@@ -1934,13 +1973,17 @@ task.spawn(function()
 	if GunModule and GunModule.StartShooting then
 		local prev = GunModule.StartShooting
 		GunModule.StartShooting = function(self, ...)
-			if S.RapidFire then
+			local semi = true
+			pcall(function()
+				if isSemiWeapon then semi = isSemiWeapon(self) end
+			end)
+			if S.RapidFire and semi then
 				pcall(function()
 					if self.Info then forceZeroInfo(self.Info) end
 				end)
 			end
 			local results = { prev(self, ...) }
-			if S.RapidFire then
+			if S.RapidFire and semi then
 				pcall(function()
 					if self.Info then forceZeroInfo(self.Info) end
 				end)
@@ -1972,42 +2015,60 @@ task.spawn(function()
 	end
 end)
 
+-- Rapid Fire: ONLY semi weapons (pistol / revolver). Full-auto guns are ignored.
 local lastRapid = 0
 RunService.Heartbeat:Connect(function()
 	if not S.RapidFire then return end
 	local lf = getFighter and getFighter() or nil
 	if not lf or not lf.EquippedItem then return end
+	if not isSemiWeapon(lf.EquippedItem) then return end
+
 	local holding = false
 	pcall(function()
 		holding = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
 			or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
 	end)
 	if not holding then return end
+
 	pcall(function()
 		local item = lf.EquippedItem
 		if item.Info and forceZeroInfo then forceZeroInfo(item.Info) end
-		for _, k in ipairs({"ShootCooldown", "AttackCooldown", "LastShoot", "LastAttack", "NextShot", "Cooldown"}) do
+		for _, k in ipairs({
+			"ShootCooldown", "AttackCooldown", "LastShoot", "LastAttack", "NextShot", "Cooldown",
+			"TimeSinceLastShot", "NextFireTime", "LastFireTime", "FireDelay",
+		}) do
 			if type(item[k]) == "number" then item[k] = 0 end
 		end
+		pcall(function()
+			if item.Set then
+				item:Set("ShootCooldown", 0)
+				item:Set("Cooldown", 0)
+				item:Set("CanShoot", true)
+				item:Set("Ready", true)
+			end
+		end)
 	end)
-	if tick() - lastRapid < 0.055 then return end
-	local head = nil
-	pcall(function()
-		if getCrosshair then head = getCrosshair(S.AimFOV or 300) end
-		if not head and getNearest then head = getNearest(false) end
-	end)
-	if not head then return end
+
+	-- faster spam for pistols/revolvers
+	if tick() - lastRapid < 0.03 then return end
 	lastRapid = tick()
+
 	pcall(function()
 		refreshMods()
 		if not (Utility and EnumLibrary and UseItem) then return end
-		local oid = lf.EquippedItem:Get("ObjectID")
+		local item = lf.EquippedItem
+		local oid = item:Get("ObjectID")
 		local se = EnumLibrary:ToEnum("StartShooting")
 		if not oid or se == nil then return end
 		local root = getRootPart and getRootPart() or nil
 		local from = root and root.Position or Cam.CFrame.Position
-		local to = head.Position
-		if S.WallCheck and hasLOS and not hasLOS(from, to, head.Parent) then return end
+		local to = from + Cam.CFrame.LookVector * 200
+		local head = nil
+		pcall(function()
+			if getCrosshair then head = getCrosshair(S.AimFOV or 300) end
+			if not head and getNearest then head = getNearest(false) end
+		end)
+		if head then to = head.Position end
 		local data = encodeShot and encodeShot(from, to, head) or nil
 		if not data then
 			local e = Utility:EncodeCFrame(CFrame.new(from, to))
@@ -2018,8 +2079,19 @@ RunService.Heartbeat:Connect(function()
 					[utf8.char(3)] = Utility:EncodeCFrame(CFrame.new(0.43, 0.25, 0.42)),
 				},
 			}
+			if head then
+				data[utf8.char(1)][utf8.char(2)] = head
+			end
 		end
 		UseItem:FireServer(oid, se, data, nil)
+		-- second shot for revolvers that eat one packet
+		task.defer(function()
+			pcall(function()
+				if S.RapidFire and isSemiWeapon(item) then
+					UseItem:FireServer(oid, se, data, nil)
+				end
+			end)
+		end)
 	end)
 end)
 
@@ -2724,27 +2796,30 @@ task.spawn(function()
 	local arms = {up, down, left, right}
 	local outlines = {upO, downO, leftO, rightO}
 
-	-- center dot
-	local dot = Instance.new("Frame")
-	dot.AnchorPoint = Vector2.new(0.5, 0.5)
-	dot.Position = UDim2.fromScale(0.5, 0.5)
-	dot.Size = UDim2.fromOffset(3, 3)
-	dot.BorderSizePixel = 0
-	dot.Parent = root
-	local dotO = Instance.new("UIStroke")
-	dotO.Thickness = 1
-	dotO.Color = Color3.fromRGB(0, 0, 0)
-	dotO.Parent = dot
+	-- brand text under cross (does not spin with arms)
+	local brand = Instance.new("TextLabel")
+	brand.AnchorPoint = Vector2.new(0.5, 0)
+	brand.Position = UDim2.new(0.5, 0, 0.5, 28)
+	brand.Size = UDim2.fromOffset(120, 18)
+	brand.BackgroundTransparency = 1
+	brand.Font = Enum.Font.GothamBold
+	brand.TextSize = 13
+	brand.Text = "cute.win"
+	brand.TextStrokeTransparency = 0.25
+	brand.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	brand.Parent = sg
 
 	local gap = 4
 	local baseLen = 10
 	local pulse = 0
 	RunService.RenderStepped:Connect(function(dt)
-		root.Visible = S.CustomCrosshair == true
-		if not root.Visible then return end
+		local on = S.CustomCrosshair == true
+		root.Visible = on
+		brand.Visible = on
+		if not on then return end
 
 		pulse = pulse + (dt or 0.016) * 2.2
-		local expand = 1 + 0.35 * math.sin(pulse) -- grow/shrink
+		local expand = 1 + 0.35 * math.sin(pulse)
 		local len = baseLen * expand
 		local thick = 2
 
@@ -2763,9 +2838,8 @@ task.spawn(function()
 
 		local col = Color3.fromHSV((tick() * 0.25) % 1, 0.9, 1)
 		for _, a in ipairs(arms) do a.BackgroundColor3 = col end
-		dot.BackgroundColor3 = col
 		for _, o in ipairs(outlines) do o.Color = Color3.fromRGB(0, 0, 0) end
-		dotO.Color = Color3.fromRGB(0, 0, 0)
+		brand.TextColor3 = col
 	end)
 end)
 
