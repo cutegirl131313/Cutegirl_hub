@@ -1593,7 +1593,11 @@ end
 local function getHead(plr)
 	local c = plr.Character
 	if not c then return nil end
-	return c:FindFirstChild("HitboxHead") or c:FindFirstChild("Head")
+	-- always prefer real head hitboxes for silent
+	return c:FindFirstChild("HitboxHead")
+		or c:FindFirstChild("HitboxHeadSmall")
+		or c:FindFirstChild("HeadHitbox")
+		or c:FindFirstChild("Head")
 end
 
 local function getNearest(ignoreWall)
@@ -1676,15 +1680,40 @@ end
 
 local function encodeShot(from, to, head)
 	if not Utility then return nil end
-	local e = Utility:EncodeCFrame(CFrame.new(from, to))
+	-- force destination to head position if head part given
+	if head and head.Position then
+		to = head.Position
+	end
+	local look = CFrame.lookAt(from, to)
+	local e = Utility:EncodeCFrame(look)
+	local hitPart = head
+	-- relative offset on head (center)
+	local rel = CFrame.new(0, 0, 0)
+	pcall(function()
+		if head then
+			rel = head.CFrame:ToObjectSpace(CFrame.new(to))
+		end
+	end)
+	local relE = Utility:EncodeCFrame(rel)
 	return {
 		[utf8.char(1)] = {
 			[utf8.char(0)] = e,
 			[utf8.char(1)] = e,
-			[utf8.char(2)] = head,
-			[utf8.char(3)] = Utility:EncodeCFrame(CFrame.new(0.43, 0.25, 0.42)),
+			[utf8.char(2)] = hitPart,
+			[utf8.char(3)] = relE,
 		},
 	}
+end
+
+local function forceHeadPart(part)
+	if not part then return nil end
+	local char = part:FindFirstAncestorOfClass("Model") or part.Parent
+	if not char then return part end
+	return char:FindFirstChild("HitboxHead")
+		or char:FindFirstChild("HitboxHeadSmall")
+		or char:FindFirstChild("HeadHitbox")
+		or char:FindFirstChild("Head")
+		or part
 end
 
 task.spawn(function()
@@ -1716,20 +1745,27 @@ task.spawn(function()
 		end
 		local head
 		if S.SilentAim then
-			head = getTarget(false, S.AimFOV or 300)
+			-- FOV target; if none, still try nearest head (noscope sniper support)
+			head = getTarget(true, S.AimFOV or 300) or getNearest(true) or getCrosshair(S.AimFOV or 500)
 		else
 			head = getCrosshair(S.TrigFOV or 120)
 		end
+		head = forceHeadPart(head)
 		if head and Utility then
 			local pos = head.Position
 			local root = getRootPart()
 			local from = root and root.Position or Cam.CFrame.Position
+			-- bend bullet: origin can stay camera/gun, destination forced to head
 			pcall(function()
 				local data = encodeShot(from, pos, head)
 				if data then
-					c[utf8.char(1)] = data[utf8.char(1)]
-					c[utf8.char(0)] = data[utf8.char(1)][utf8.char(0)]
+					local slot = data[utf8.char(1)]
+					c[utf8.char(1)] = slot
+					c[utf8.char(0)] = slot[utf8.char(0)]
 					c[utf8.char(2)] = head
+					-- some builds use numeric keys too
+					c[1] = slot
+					c[2] = head
 				end
 			end)
 			d = true
@@ -1784,14 +1820,11 @@ RunService.Heartbeat:Connect(function()
 			or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
 	end)
 	if not holding then return end
-	if tick() - lastSilent < 0.05 then return end
-	local head = getTarget(false, S.AimFOV or 300)
+	if tick() - lastSilent < 0.04 then return end
+	-- ignoreWall=true so noscope / far sniper still locks head
+	local head = getTarget(true, S.AimFOV or 400) or getNearest(true)
+	head = forceHeadPart(head)
 	if not head then return end
-	local char = head.Parent
-	if char then
-		local h = char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head")
-		if h then head = h end
-	end
 	refreshMods()
 	if not (Utility and EnumLibrary and UseItem) then return end
 	local lf = getFighter()
@@ -2799,18 +2832,18 @@ task.spawn(function()
 	-- brand text under cross (does not spin with arms)
 	local brand = Instance.new("TextLabel")
 	brand.AnchorPoint = Vector2.new(0.5, 0)
-	brand.Position = UDim2.new(0.5, 0, 0.5, 28)
+	brand.Position = UDim2.new(0.5, 0, 0.5, 34)
 	brand.Size = UDim2.fromOffset(120, 18)
 	brand.BackgroundTransparency = 1
 	brand.Font = Enum.Font.GothamBold
-	brand.TextSize = 13
+	brand.TextSize = 10
 	brand.Text = "cute.win"
 	brand.TextStrokeTransparency = 0.25
 	brand.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 	brand.Parent = sg
 
 	local gap = 4
-	local baseLen = 10
+	local baseLen = 16
 	local pulse = 0
 	RunService.RenderStepped:Connect(function(dt)
 		local on = S.CustomCrosshair == true
