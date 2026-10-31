@@ -523,10 +523,22 @@ pcall(function()
 	Library.ToggleKeybind = nil
 end)
 
--- ========== MENU TOGGLE (1 key = close/open, no white) ==========
+-- ========== MENU TOGGLE (PC buttons / mobile no buttons, no zoom bug) ==========
 task.spawn(function()
 	local CoreGui = game:GetService("CoreGui")
 	local UIS = game:GetService("UserInputService")
+	local isMobile = (UIS.TouchEnabled and not UIS.KeyboardEnabled)
+		or (Library and Library.IsMobile == true)
+
+	-- mobile: lock DPI once so library doesn't keep rescaling (zoom in/out feel)
+	pcall(function()
+		if isMobile and Library.SetDPIScale then
+			Library:SetDPIScale(100)
+		end
+		if Library.Animations then Library.Animations.ToggleWindow = false end
+		Library.ToggleKeybind = nil
+		Library.ShowCustomCursor = false
+	end)
 
 	local main = nil
 	for _ = 1, 60 do
@@ -542,73 +554,60 @@ task.spawn(function()
 		hubGui = hubGui.Parent
 	end
 
-	-- permanently disable library fade + keybind
+	local colorBackup = {}
 	pcall(function()
-		if Library.Animations then Library.Animations.ToggleWindow = false end
-		Library.ToggleKeybind = nil
+		for _, d in ipairs(main:GetDescendants()) do
+			if d:IsA("GuiObject") then
+				colorBackup[d] = {
+					bg = d.BackgroundColor3,
+					bt = d.BackgroundTransparency,
+				}
+			end
+		end
 	end)
 
-	-- snapshot original background colors so we can restore after white glitch
-	local colorBackup = {}
-	local function backupColors(root)
-		pcall(function()
-			for _, d in ipairs(root:GetDescendants()) do
-				if d:IsA("GuiObject") then
-					colorBackup[d] = {
-						bg = d.BackgroundColor3,
-						bt = d.BackgroundTransparency,
-						tc = (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) and d.TextColor3 or nil,
-						tt = (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) and d.TextTransparency or nil,
-					}
-				end
-			end
-			if root:IsA("GuiObject") then
-				colorBackup[root] = { bg = root.BackgroundColor3, bt = root.BackgroundTransparency }
-			end
-		end)
-	end
-	backupColors(main)
-
 	local function restoreColors()
-		pcall(function()
-			for obj, data in pairs(colorBackup) do
-				if obj and obj.Parent then
-					pcall(function()
-						obj.BackgroundColor3 = data.bg
-						obj.BackgroundTransparency = data.bt or 0
-						if data.tc and obj.TextColor3 then
-							obj.TextColor3 = data.tc
-						end
-						if data.tt ~= nil and obj.TextTransparency then
-							obj.TextTransparency = data.tt
-						end
-					end)
-				end
+		for obj, data in pairs(colorBackup) do
+			if obj and obj.Parent then
+				pcall(function()
+					obj.BackgroundColor3 = data.bg
+					obj.BackgroundTransparency = data.bt or 0
+				end)
 			end
-		end)
+		end
 	end
 
 	local open = true
+	local savedFov = nil
+	pcall(function()
+		local cam = workspace.CurrentCamera
+		if cam then savedFov = cam.FieldOfView end
+	end)
 
 	local function freeMouseCamera()
+		-- PC only — on mobile this causes zoom / camera jitter
+		if isMobile then return end
 		pcall(function()
 			UIS.MouseBehavior = Enum.MouseBehavior.Default
 			UIS.MouseIconEnabled = true
-			UIS.ModalEnabled = false
 		end)
 		pcall(function()
 			local cam = workspace.CurrentCamera
-			if cam and cam.CameraType == Enum.CameraType.Scriptable then
-				-- don't touch if freecam feature is intentionally on
-				if not (S and S.Freecam) then
+			if cam and not (S and S.Freecam) then
+				if cam.CameraType == Enum.CameraType.Scriptable then
 					cam.CameraType = Enum.CameraType.Custom
+				end
+				if savedFov and cam.FieldOfView ~= savedFov then
+					-- don't fight game FOV every frame; only if wildly off
+					if math.abs(cam.FieldOfView - savedFov) > 25 then
+						cam.FieldOfView = savedFov
+					end
 				end
 			end
 		end)
-		-- clear modal frames from library
 		pcall(function()
 			for _, d in ipairs(main:GetDescendants()) do
-				if d:IsA("TextButton") and d.Modal == true then
+				if d:IsA("TextButton") and d.Modal then
 					d.Modal = false
 				end
 			end
@@ -617,25 +616,19 @@ task.spawn(function()
 
 	local function setOpen(v)
 		open = v and true or false
-		pcall(function() if Library.Animations then Library.Animations.ToggleWindow = false end end)
-		pcall(function() Library.ToggleKeybind = nil end)
-		pcall(function() Library.Toggled = open end)
-
+		pcall(function()
+			if Library.Animations then Library.Animations.ToggleWindow = false end
+			Library.ToggleKeybind = nil
+			Library.Toggled = open
+		end)
 		if hubGui and hubGui:IsA("ScreenGui") then
 			hubGui.Enabled = open
 		end
 		main.Visible = open
-
-		if open then
-			restoreColors()
-		else
-			-- menu closed -> camera/mouse must work
-			freeMouseCamera()
-		end
-		freeMouseCamera()
+		if open then restoreColors() end
+		if not isMobile then freeMouseCamera() end
 	end
 
-	-- library Toggle -> our setOpen only
 	pcall(function()
 		local function safe(_, value)
 			if typeof(value) == "boolean" then
@@ -649,101 +642,114 @@ task.spawn(function()
 		if _G.CuteGirlWindow then _G.CuteGirlWindow.Toggle = safe end
 	end)
 
-	-- buttons
+	-- destroy any old floating buttons
 	pcall(function()
 		for _, parent in ipairs({ CoreGui, typeof(gethui) == "function" and gethui() or nil }) do
-			if parent and parent:FindFirstChild("CG_TOGGLE") then
-				parent.CG_TOGGLE:Destroy()
+			if parent then
+				local o = parent:FindFirstChild("CG_TOGGLE")
+				if o then o:Destroy() end
 			end
 		end
 	end)
 
-	local sg = Instance.new("ScreenGui")
-	sg.Name = "CG_TOGGLE"
-	sg.ResetOnSpawn = false
-	sg.IgnoreGuiInset = true
-	sg.DisplayOrder = 1000000
-	sg.Parent = CoreGui
-	pcall(function() if gethui then sg.Parent = gethui() end end)
+	-- PC only: Toggle UI / Lock buttons
+	if not isMobile then
+		local sg = Instance.new("ScreenGui")
+		sg.Name = "CG_TOGGLE"
+		sg.ResetOnSpawn = false
+		sg.IgnoreGuiInset = true
+		sg.DisplayOrder = 1000000
+		sg.Parent = CoreGui
+		pcall(function() if gethui then sg.Parent = gethui() end end)
 
-	local function mk(txt, y)
-		local b = Instance.new("TextButton")
-		b.Size = UDim2.fromOffset(110, 34)
-		b.Position = UDim2.fromOffset(14, y)
-		b.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
-		b.TextColor3 = Color3.fromRGB(255, 255, 255)
-		b.Font = Enum.Font.GothamBold
-		b.TextSize = 14
-		b.Text = txt
-		b.BorderSizePixel = 0
-		b.Parent = sg
-		local s = Instance.new("UIStroke")
-		s.Thickness = 1.5
-		s.Color = Color3.fromRGB(0, 0, 0)
-		s.Parent = b
-		return b
-	end
-
-	local toggleBtn = mk("Toggle UI", 70)
-	local lockBtn = mk("Lock", 110)
-	local locked = false
-
-	toggleBtn.MouseButton1Click:Connect(function()
-		setOpen(not open)
-		toggleBtn.Text = open and "Toggle UI" or "Open UI"
-	end)
-	lockBtn.MouseButton1Click:Connect(function()
-		locked = not locked
-		lockBtn.Text = locked and "Unlock" or "Lock"
-	end)
-
-	-- ONE press RightShift = toggle (ignore repeats while held)
-	local holding = false
-	UIS.InputBegan:Connect(function(input, gp)
-		if input.KeyCode ~= Enum.KeyCode.RightShift then return end
-		if holding then return end
-		holding = true
-		pcall(function() Library.ToggleKeybind = nil end)
-		setOpen(not open)
-		toggleBtn.Text = open and "Toggle UI" or "Open UI"
-	end)
-	UIS.InputEnded:Connect(function(input)
-		if input.KeyCode == Enum.KeyCode.RightShift then
-			holding = false
+		local function mk(txt, y)
+			local b = Instance.new("TextButton")
+			b.Size = UDim2.fromOffset(110, 34)
+			b.Position = UDim2.fromOffset(14, y)
+			b.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+			b.TextColor3 = Color3.fromRGB(255, 255, 255)
+			b.Font = Enum.Font.GothamBold
+			b.TextSize = 14
+			b.Text = txt
+			b.BorderSizePixel = 0
+			b.Parent = sg
+			local s = Instance.new("UIStroke")
+			s.Thickness = 1.5
+			s.Color = Color3.fromRGB(0, 0, 0)
+			s.Parent = b
+			return b
 		end
-	end)
 
-	task.spawn(function()
-		while sg.Parent do
-			pcall(function()
-				Library.ToggleKeybind = nil
-				if Library.Animations then Library.Animations.ToggleWindow = false end
-				if open then
-					local bad = false
-					for _, d in ipairs(main:GetDescendants()) do
-						if d:IsA("Frame") then
-							local c = d.BackgroundColor3
-							if c.R > 0.9 and c.G > 0.9 and c.B > 0.9 and d.BackgroundTransparency < 0.3 then
-								if d.AbsoluteSize.X > 100 and d.AbsoluteSize.Y > 100 then
+		local toggleBtn = mk("Toggle UI", 70)
+		local lockBtn = mk("Lock", 110)
+		local locked = false
+
+		toggleBtn.MouseButton1Click:Connect(function()
+			setOpen(not open)
+			toggleBtn.Text = open and "Toggle UI" or "Open UI"
+		end)
+		lockBtn.MouseButton1Click:Connect(function()
+			locked = not locked
+			lockBtn.Text = locked and "Unlock" or "Lock"
+		end)
+
+		local holding = false
+		UIS.InputBegan:Connect(function(input)
+			if input.KeyCode ~= Enum.KeyCode.RightShift then return end
+			if holding then return end
+			holding = true
+			pcall(function() Library.ToggleKeybind = nil end)
+			setOpen(not open)
+			toggleBtn.Text = open and "Toggle UI" or "Open UI"
+		end)
+		UIS.InputEnded:Connect(function(input)
+			if input.KeyCode == Enum.KeyCode.RightShift then
+				holding = false
+			end
+		end)
+
+		task.spawn(function()
+			while sg.Parent do
+				pcall(function()
+					Library.ToggleKeybind = nil
+					if Library.Animations then Library.Animations.ToggleWindow = false end
+					if open then
+						local bad = false
+						for _, d in ipairs(main:GetDescendants()) do
+							if d:IsA("Frame") then
+								local c = d.BackgroundColor3
+								if c.R > 0.9 and c.G > 0.9 and c.B > 0.9 and d.BackgroundTransparency < 0.3
+									and d.AbsoluteSize.X > 100 and d.AbsoluteSize.Y > 100 then
 									bad = true
 									break
 								end
 							end
 						end
+						if bad then restoreColors() end
+					else
+						freeMouseCamera()
 					end
-					if bad then restoreColors() end
-				else
-					freeMouseCamera()
-				end
-			end)
-			task.wait(0.35)
-		end
-	end)
+				end)
+				task.wait(0.5)
+			end
+		end)
 
-	toggleBtn.Text = "Toggle UI"
-	Library:OnUnload(function()
-		pcall(function() sg:Destroy() end)
-	end)
+		Library:OnUnload(function()
+			pcall(function() sg:Destroy() end)
+		end)
+	else
+		-- mobile: no floating buttons, no freeMouseCamera loop (fixes zoom pulse)
+		task.spawn(function()
+			while main and main.Parent do
+				pcall(function()
+					Library.ToggleKeybind = nil
+					if Library.Animations then Library.Animations.ToggleWindow = false end
+					-- never touch CameraType / FieldOfView / MouseBehavior on mobile
+				end)
+				task.wait(1)
+			end
+		end)
+	end
 end)
 
 
@@ -2977,7 +2983,11 @@ task.spawn(function()
 		end
 		ring.Visible = true
 		local fov = S.Aimbot and (S.AimFOV or 300) or (S.TrigFOV or 120)
-		ring.Size = UDim2.fromOffset(fov * 2, fov * 2)
+		local px = fov * 2
+		if UIS.TouchEnabled and not UIS.KeyboardEnabled then
+			px = math.min(px, 280)
+		end
+		ring.Size = UDim2.fromOffset(px, px)
 	end)
 end)
 
