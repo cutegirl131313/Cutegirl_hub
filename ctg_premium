@@ -531,7 +531,7 @@ _G.HUB = _G.HUB or {
 	RapidFire = false, NoRecoil = false, NoSpread = false,
 	WalkSpeed = false, WalkSpeedValue = 45, Freecam = false, FreecamSpeed = 50,
 	RageBot = false, RageMode = "gun", Orbit = false, OrbitStuds = 8,
-	RageMulti = 5, RageBoost = true, ImmunityCheck = false,
+	RageMulti = 6, RageBoost = true, ImmunityCheck = false,
 }
 local S = _G.HUB
 
@@ -1130,20 +1130,39 @@ task.spawn(function()
 				local targetPlr = Players:GetPlayerFromCharacter(targetChar)
 				if not targetPlr or targetPlr == LP then return end
 				if _isSameTeam(targetPlr) then return end
-				-- NO immunity check on purpose
 				local hum = targetChar:FindFirstChildOfClass("Humanoid")
 				if hum and hum.Health <= 0 then return end
-				local rate = (S.RageBoost and 0.0) or 0.01
-				if rate > 0 and tick() - lastFire < rate then return end
+				-- beat enemy rage: zero delay + multi origin shots
+				if tick() - lastFire < 0.0 then return end
 				lastFire = tick()
 				local objId = getObjId()
 				if objId then cachedId = objId else objId = cachedId end
-				if not objId then return end
+				if not objId or not _ssEnum then return end
 				local head = _halmu.currentTarget
-				local multi = math.clamp(tonumber(S.RageMulti) or 5, 1, 8)
+				-- re-resolve head every shot (anti desync swap)
+				if targetChar then
+					head = targetChar:FindFirstChild("HitboxHead")
+						or targetChar:FindFirstChild("HitboxHeadSmall")
+						or targetChar:FindFirstChild("Head")
+						or head
+					_halmu.currentTarget = head
+				end
+				if not head then return end
+				local multi = math.clamp(tonumber(S.RageMulti) or 6, 1, 10)
+				local hp = head.Position
+				local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+				local camPos = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position
+				-- origins: on head, above head, from camera, from root (harder for enemy desync to dodge)
+				local origins = {
+					hp + Vector3.new(0, 0.05, 0),
+					hp + Vector3.new(0, 0.35, 0),
+					hp + Vector3.new(0.1, 0.1, 0),
+					hp + Vector3.new(-0.1, 0.1, 0),
+					camPos or hp,
+					myRoot and myRoot.Position or hp,
+				}
 				for i = 1, multi do
-					local jitter = Vector3.new((i - 1) * 0.02, 0.08 + (i - 1) * 0.01, (i - 1) * 0.02)
-					local origin = head.Position + jitter
+					local origin = origins[((i - 1) % #origins) + 1]
 					pcall(function()
 						_useItemRemote:FireServer(objId, _ssEnum, buildShot(origin, head), nil)
 					end)
@@ -1159,10 +1178,11 @@ task.spawn(function()
 					_halmu.RealCFrame = hrp.CFrame
 					_halmu.RealVelocity = hrp.AssemblyLinearVelocity
 					local tp = _halmu.currentTarget.Position
-					local dist = _halmu.desyncDist or 3
-					-- sit on target head/path for stronger hit registration
+					local dist = math.max(0.5, (_halmu.desyncDist or 3) * 0.5)
+					-- tighter desync so enemy rage loses register race
 					hrp.CFrame = CFrame.new(tp + Vector3.new(0, dist, 0), tp)
 					hrp.AssemblyLinearVelocity = Vector3.zero
+					hrp.AssemblyAngularVelocity = Vector3.zero
 				end
 			end)
 		end)
@@ -1180,7 +1200,7 @@ task.spawn(function()
 		-- Target finder
 		task.spawn(function()
 			while true do
-				task.wait(0.01)
+				task.wait(0.0)
 				if _halmu.rageEnabled or _halmu.orbitEnabled then
 					local ref = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
 					local refPos = ref and ref.Position or Vector3.zero
@@ -1745,17 +1765,23 @@ task.spawn(function()
 		end
 		local head
 		if S.SilentAim then
-			-- FOV target; if none, still try nearest head (noscope sniper support)
-			head = getTarget(true, S.AimFOV or 300) or getNearest(true) or getCrosshair(S.AimFOV or 500)
+			-- wall/team checks honored via getTarget/getNearest flags
+			local ignoreWall = not S.WallCheck
+			head = getCrosshair(S.AimFOV or 400)
+				or getTarget(ignoreWall, S.AimFOV or 400)
+				or getNearest(ignoreWall)
 		else
 			head = getCrosshair(S.TrigFOV or 120)
 		end
 		head = forceHeadPart(head)
 		if head and Utility then
 			local pos = head.Position
-			local root = getRootPart()
-			local from = root and root.Position or Cam.CFrame.Position
-			-- bend bullet: origin can stay camera/gun, destination forced to head
+			-- remote bend origin from camera so noscope still registers head
+			local from = Cam.CFrame.Position
+			pcall(function()
+				local root = getRootPart()
+				if root then from = root.Position end
+			end)
 			pcall(function()
 				local data = encodeShot(from, pos, head)
 				if data then
@@ -1763,12 +1789,28 @@ task.spawn(function()
 					c[utf8.char(1)] = slot
 					c[utf8.char(0)] = slot[utf8.char(0)]
 					c[utf8.char(2)] = head
-					-- some builds use numeric keys too
 					c[1] = slot
 					c[2] = head
 				end
 			end)
 			d = true
+			-- also hard-fire remote packet for noscope weapons that drop client shot
+			if S.SilentAim then
+				pcall(function()
+					refreshMods()
+					if UseItem and EnumLibrary then
+						local lf = getFighter and getFighter()
+						if lf and lf.EquippedItem then
+							local oid = lf.EquippedItem:Get("ObjectID")
+							local se = EnumLibrary:ToEnum("StartShooting")
+							if oid and se then
+								local data2 = encodeShot(from, pos, head)
+								if data2 then UseItem:FireServer(oid, se, data2, nil) end
+							end
+						end
+					end
+				end)
+			end
 		end
 		return a, b, c, d, e
 	end
@@ -1820,9 +1862,12 @@ RunService.Heartbeat:Connect(function()
 			or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
 	end)
 	if not holding then return end
-	if tick() - lastSilent < 0.04 then return end
-	-- ignoreWall=true so noscope / far sniper still locks head
-	local head = getTarget(true, S.AimFOV or 400) or getNearest(true)
+	if tick() - lastSilent < 0.03 then return end
+	-- team check via validEnemy; wall check optional
+	local ignoreWall = not S.WallCheck
+	local head = getCrosshair(S.AimFOV or 450)
+		or getTarget(ignoreWall, S.AimFOV or 450)
+		or getNearest(ignoreWall)
 	head = forceHeadPart(head)
 	if not head then return end
 	refreshMods()
@@ -1832,10 +1877,13 @@ RunService.Heartbeat:Connect(function()
 	local ok, oid = pcall(function() return lf.EquippedItem:Get("ObjectID") end)
 	local okE, se = pcall(function() return EnumLibrary:ToEnum("StartShooting") end)
 	if not (ok and oid and okE and se) then return end
+	local from = Cam.CFrame.Position
 	local root = getRootPart()
-	local from = root and root.Position or Cam.CFrame.Position
+	if root then from = root.Position end
 	local data = encodeShot(from, head.Position, head)
 	if data then
+		pcall(function() UseItem:FireServer(oid, se, data, nil) end)
+		-- double packet vs other rage users
 		pcall(function() UseItem:FireServer(oid, se, data, nil) end)
 		lastSilent = tick()
 	end
