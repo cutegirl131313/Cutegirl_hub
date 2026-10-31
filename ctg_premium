@@ -522,175 +522,137 @@ pcall(function()
 	Library.ToggleKeybind = nil
 end)
 
--- ========== TOGGLE UI (from scratch) ==========
-task.defer(function()
+-- ========== MENU TOGGLE (ScreenGui level - no fade) ==========
+task.spawn(function()
 	local CoreGui = game:GetService("CoreGui")
 	local UIS = game:GetService("UserInputService")
 
+	-- wait until window exists
+	local main = nil
+	for i = 1, 50 do
+		main = (Library.Window and Library.Window.MainFrame)
+			or (_G.CuteGirlWindow and _G.CuteGirlWindow.MainFrame)
+		if main then break end
+		task.wait(0.1)
+	end
+	if not main then return end
+
+	-- parent ScreenGui of the hub (toggle this = real open/close)
+	local hubGui = main
+	while hubGui and not hubGui:IsA("ScreenGui") do
+		hubGui = hubGui.Parent
+	end
+	if not hubGui then hubGui = main end
+
+	-- kill library keybind + animations forever
 	pcall(function()
 		if Library.Animations then Library.Animations.ToggleWindow = false end
 		Library.ToggleKeybind = nil
-		if Library.Options and Library.Options.MenuKeybind then
-			pcall(function() Library.Options.MenuKeybind:SetValue("Unknown") end)
-			pcall(function() Library.Options.MenuKeybind.Value = "Unknown" end)
+	end)
+	-- replace Toggle so library never fades
+	local function hardSet(open)
+		pcall(function()
+			if hubGui:IsA("ScreenGui") then
+				hubGui.Enabled = open
+			end
+			main.Visible = open
+			Library.Toggled = open
+		end)
+	end
+	pcall(function()
+		Library.Toggle = function(_, v)
+			local o = (typeof(v) == "boolean") and v or not (Library.Toggled == true)
+			hardSet(o)
+		end
+		if Library.Window then
+			Library.Window.Toggle = Library.Toggle
+		end
+		if _G.CuteGirlWindow then
+			_G.CuteGirlWindow.Toggle = Library.Toggle
 		end
 	end)
 
+	-- remove old buttons
 	pcall(function()
 		for _, parent in ipairs({ CoreGui, typeof(gethui) == "function" and gethui() or nil }) do
-			if parent and parent:FindFirstChild("CG_TOGGLE") then
-				parent.CG_TOGGLE:Destroy()
+			if parent then
+				local o = parent:FindFirstChild("CG_TOGGLE")
+				if o then o:Destroy() end
 			end
 		end
 	end)
 
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "CG_TOGGLE"
-	gui.ResetOnSpawn = false
-	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 999999
-	gui.Parent = CoreGui
-	pcall(function() if gethui then gui.Parent = gethui() end end)
+	local sg = Instance.new("ScreenGui")
+	sg.Name = "CG_TOGGLE"
+	sg.ResetOnSpawn = false
+	sg.IgnoreGuiInset = true
+	sg.DisplayOrder = 1000000
+	sg.Parent = CoreGui
+	pcall(function() if gethui then sg.Parent = gethui() end end)
 
-	local function makeButton(name, y)
+	local function mk(txt, y)
 		local b = Instance.new("TextButton")
-		b.Name = name
-		b.Size = UDim2.fromOffset(100, 32)
-		b.Position = UDim2.fromOffset(12, y)
-		b.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-		b.BorderSizePixel = 0
-		b.Font = Enum.Font.GothamBold
-		b.TextSize = 13
+		b.Size = UDim2.fromOffset(110, 34)
+		b.Position = UDim2.fromOffset(14, y)
+		b.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
 		b.TextColor3 = Color3.fromRGB(255, 255, 255)
-		b.Text = name
-		b.ZIndex = 100
-		b.Parent = gui
-		local stroke = Instance.new("UIStroke")
-		stroke.Thickness = 1
-		stroke.Color = Color3.fromRGB(0, 0, 0)
-		stroke.Parent = b
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 14
+		b.Text = txt
+		b.BorderSizePixel = 0
+		b.Parent = sg
+		local s = Instance.new("UIStroke")
+		s.Thickness = 1.5
+		s.Color = Color3.fromRGB(0, 0, 0)
+		s.Parent = b
 		return b
 	end
 
-	local toggleBtn = makeButton("Toggle UI", 80)
-	local lockBtn = makeButton("Lock", 116)
-
+	local toggleBtn = mk("Toggle UI", 70)
+	local lockBtn = mk("Lock", 110)
 	local open = true
 	local locked = false
 
-	local function getFrame()
-		if Library.Window and Library.Window.MainFrame then
-			return Library.Window.MainFrame
-		end
-		if _G.CuteGirlWindow and _G.CuteGirlWindow.MainFrame then
-			return _G.CuteGirlWindow.MainFrame
-		end
-		return nil
-	end
-
-	-- restore dark look after bad fade
-	local function fixWhite(frame)
-		if not frame then return end
-		pcall(function()
-			frame.BackgroundTransparency = 0
-			for _, d in ipairs(frame:GetDescendants()) do
-				if d:IsA("Frame") or d:IsA("TextButton") or d:IsA("ScrollingFrame") then
-					-- if washed out white panel, push back toward dark
-					local c = d.BackgroundColor3
-					if c.R > 0.85 and c.G > 0.85 and c.B > 0.85 and d.BackgroundTransparency < 0.5 then
-						d.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-					end
-					if d.BackgroundTransparency > 0 and d.BackgroundTransparency < 1 then
-						-- mid-fade stuck: reset
-						if not open then
-							-- leave
-						else
-							if d.BackgroundTransparency > 0.2 then
-								d.BackgroundTransparency = 0
-							end
-						end
-					end
-				elseif d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
-					if d.TextTransparency > 0.05 then d.TextTransparency = 0 end
-					local c = d.TextColor3
-					if c.R > 0.9 and c.G > 0.9 and c.B > 0.9 then
-						-- keep white text ok on dark
-					end
-				elseif d:IsA("UIStroke") then
-					d.Transparency = 0
-				end
-			end
-		end)
-	end
-
-	local function apply(state)
-		open = state and true or false
-		pcall(function() if Library.Animations then Library.Animations.ToggleWindow = false end end)
-		pcall(function() Library.ToggleKeybind = nil end)
-
-		local frame = getFrame()
-		if frame then
-			frame.Visible = open
-			if open then
-				fixWhite(frame)
-			end
-		end
-		-- NEVER call Library:Toggle / Window:Toggle here
-		pcall(function() Library.Toggled = open end)
+	local function setOpen(v)
+		open = v and true or false
+		hardSet(open)
 		toggleBtn.Text = open and "Toggle UI" or "Open UI"
 	end
 
 	toggleBtn.MouseButton1Click:Connect(function()
-		apply(not open)
+		setOpen(not open)
 	end)
 	lockBtn.MouseButton1Click:Connect(function()
 		locked = not locked
 		lockBtn.Text = locked and "Unlock" or "Lock"
 	end)
 
-	-- replace library toggle so NOTHING can white-fade
-	pcall(function()
-		local function safeToggle(_, value)
-			local newState
-			if typeof(value) == "boolean" then
-				newState = value
-			else
-				newState = not open
-			end
-			apply(newState)
-		end
-		Library.Toggle = safeToggle
-		if Library.Window then
-			Library.Window.Toggle = safeToggle
-		end
-		if _G.CuteGirlWindow then
-			_G.CuteGirlWindow.Toggle = safeToggle
-		end
-	end)
-
-	local cool = 0
-	UIS.InputBegan:Connect(function(input)
+	-- RightShift = exact same as button
+	local last = 0
+	UIS.InputBegan:Connect(function(input, gp)
 		if input.KeyCode ~= Enum.KeyCode.RightShift then return end
+		if tick() - last < 0.2 then return end
+		last = tick()
+		-- ensure library still has no keybind
 		pcall(function() Library.ToggleKeybind = nil end)
-		if tick() - cool < 0.2 then return end
-		cool = tick()
-		apply(not open)
+		setOpen(not open)
 	end)
 
-	task.wait(0.6)
+	-- continuous guard: library must not re-enable fade
+	task.spawn(function()
+		while sg.Parent do
+			pcall(function()
+				if Library.Animations then Library.Animations.ToggleWindow = false end
+				Library.ToggleKeybind = nil
+			end)
+			task.wait(1)
+		end
+	end)
+
 	pcall(function()
-		if Library.Animations then Library.Animations.ToggleWindow = false end
-		Library.ToggleKeybind = nil
-	end)
-	local f = getFrame()
-	if f then
-		open = f.Visible == true
-		fixWhite(f)
-	end
-	apply(open)
-
-	Library:OnUnload(function()
-		pcall(function() gui:Destroy() end)
+		Library:OnUnload(function()
+			pcall(function() sg:Destroy() end)
+		end)
 	end)
 end)
 
