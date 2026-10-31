@@ -507,7 +507,7 @@ local Window = Library:CreateWindow({
     ShowCustomCursor = true,
 })
 
--- Floating Toggle UI / Lock (PC + mobile)
+-- Floating Toggle UI / Lock + hard RightShift toggle
 pcall(function()
 	local CoreGui = game:GetService("CoreGui")
 	local UIS = game:GetService("UserInputService")
@@ -518,12 +518,14 @@ pcall(function()
 	sg.Name = "CuteGirlFloatUI"
 	sg.ResetOnSpawn = false
 	sg.IgnoreGuiInset = true
+	sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	sg.DisplayOrder = 200000
 	sg.Parent = CoreGui
+	_G.CuteGirlFloatUI = sg
 
 	local function makeBtn(text, y)
 		local b = Instance.new("TextButton")
-		b.Size = UDim2.fromOffset(78, 26)
+		b.Size = UDim2.fromOffset(82, 28)
 		b.Position = UDim2.fromOffset(10, y)
 		b.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
 		b.BorderSizePixel = 0
@@ -541,72 +543,139 @@ pcall(function()
 	end
 
 	local toggleBtn = makeBtn("Toggle UI", 90)
-	local lockBtn = makeBtn("Lock", 120)
-	local uiOpen = true
-	local uiLocked = false
+	local lockBtn = makeBtn("Lock", 122)
+	_G.CuteGirlUIOpen = true
+	_G.CuteGirlUILocked = false
+
+	local function findMenuRoots()
+		local roots = {}
+		local parents = { CoreGui }
+		pcall(function()
+			if gethui then table.insert(parents, gethui()) end
+		end)
+		pcall(function()
+			local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+			if pg then table.insert(parents, pg) end
+		end)
+		for _, parent in ipairs(parents) do
+			pcall(function()
+				for _, d in ipairs(parent:GetDescendants()) do
+					if d:IsA("Frame") or d:IsA("ScreenGui") then
+						local ok, textHits = pcall(function()
+							for _, x in ipairs(d:GetDescendants()) do
+								if x:IsA("TextLabel") or x:IsA("TextButton") then
+									local tx = tostring(x.Text or "")
+									if tx:find("Cute Girl") or tx:find("Combat") or tx:find("Spoofer") then
+										return true
+									end
+								end
+							end
+							return false
+						end)
+						if ok and textHits and d:IsA("Frame") and d.AbsoluteSize.X > 200 and d.AbsoluteSize.Y > 150 then
+							table.insert(roots, d)
+						end
+					end
+				end
+			end)
+		end
+		return roots
+	end
 
 	local function setMenuVisible(v)
-		uiOpen = not not v
+		_G.CuteGirlUIOpen = not not v
+		-- Linoria / Obsidian flags
+		pcall(function() Library.Toggled = _G.CuteGirlUIOpen end)
 		pcall(function()
-			if Library.Toggled ~= nil then
-				Library.Toggled = uiOpen
-			end
+			if Library.Open ~= nil then Library.Open = _G.CuteGirlUIOpen end
 		end)
 		pcall(function()
-			if type(Library.Toggle) == "function" and Library.Toggled ~= uiOpen then
-				Library:Toggle()
-			end
+			if type(Library.SetOpen) == "function" then Library:SetOpen(_G.CuteGirlUIOpen) end
 		end)
-		-- force main window frames
 		pcall(function()
-			for _, g in ipairs(CoreGui:GetDescendants()) do
-				if g:IsA("Frame") and (g.Name == "Main" or g.Name == "Window" or g.Name == "Outer") then
-					local title = g:FindFirstChild("Title") or g:FindFirstChildWhichIsA("TextLabel", true)
-					if title and tostring(title.Text or ""):find("Cute Girl") then
-						g.Visible = uiOpen
-					end
+			if type(Library.Toggle) == "function" then
+				-- only call Toggle if state mismatch
+				local cur = Library.Toggled
+				if cur ~= nil and cur ~= _G.CuteGirlUIOpen then
+					Library:Toggle()
+				elseif cur == nil then
+					Library:Toggle()
 				end
 			end
 		end)
-		toggleBtn.Text = uiOpen and "Toggle UI" or "Open UI"
-	end
-
-	local function setLocked(v)
-		uiLocked = not not v
-		lockBtn.Text = uiLocked and "Unlock" or "Lock"
+		-- force visibility on found windows
+		for _, root in ipairs(findMenuRoots()) do
+			pcall(function() root.Visible = _G.CuteGirlUIOpen end)
+		end
+		-- also hide library screen gui containers except our float
 		pcall(function()
-			-- try common library flags
-			Library.CantDragToggle = uiLocked
-		end)
-		pcall(function()
-			for _, g in ipairs(CoreGui:GetDescendants()) do
-				if g:IsA("TextButton") or g:IsA("Frame") then
-					local n = g.Name:lower()
-					if n:find("title") or n:find("topbar") or n:find("header") then
-						if uiLocked then
-							g.Active = false
-						else
-							g.Active = true
+			for _, gui in ipairs(CoreGui:GetChildren()) do
+				if gui:IsA("ScreenGui") and gui ~= sg and gui.Name ~= "CuteGirlWM" and gui.Name ~= "HubCrosshair" then
+					local hasLib = false
+					for _, x in ipairs(gui:GetDescendants()) do
+						if x:IsA("TextLabel") then
+							local tx = tostring(x.Text or "")
+							if tx:find("Cute Girl Hub") or tx:find("Cute Girl Hub Premium") then
+								hasLib = true
+								break
+							end
+						end
+					end
+					if hasLib then
+						-- don't disable whole ScreenGui (breaks library); toggle big frames
+						for _, fr in ipairs(gui:GetChildren()) do
+							if fr:IsA("Frame") then
+								fr.Visible = _G.CuteGirlUIOpen
+							end
 						end
 					end
 				end
 			end
 		end)
+		toggleBtn.Text = _G.CuteGirlUIOpen and "Toggle UI" or "Open UI"
+	end
+
+	_G.CuteGirlSetMenuVisible = setMenuVisible
+
+	local function setLocked(v)
+		_G.CuteGirlUILocked = not not v
+		lockBtn.Text = _G.CuteGirlUILocked and "Unlock" or "Lock"
 	end
 
 	toggleBtn.MouseButton1Click:Connect(function()
-		setMenuVisible(not uiOpen)
+		setMenuVisible(not _G.CuteGirlUIOpen)
 	end)
 	lockBtn.MouseButton1Click:Connect(function()
-		setLocked(not uiLocked)
+		setLocked(not _G.CuteGirlUILocked)
 	end)
 
-	-- Block RightShift / LeftShift from being forced as menu if user still has old config
-	-- Insert is default; Shift only moves character
+	-- HARD bind RightShift (and keybind) to toggle menu
+	UIS.InputBegan:Connect(function(input, gp)
+		if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+		local key = input.KeyCode
+		local want = false
+		if key == Enum.KeyCode.RightShift then
+			want = true
+		end
+		-- also respect MenuKeybind option if set
+		pcall(function()
+			local Options = Library.Options
+			if Options and Options.MenuKeybind and Options.MenuKeybind.Value then
+				local v = tostring(Options.MenuKeybind.Value)
+				if key == Enum.KeyCode[v] then want = true end
+			end
+		end)
+		if want then
+			setMenuVisible(not _G.CuteGirlUIOpen)
+		end
+	end)
+
+	-- drag lock: while locked, ignore titlebar mouse movement by covering? skip — lock flag for user scripts
 	Library:OnUnload(function()
 		pcall(function() sg:Destroy() end)
 	end)
 end)
+
 
 
 local Tabs = {
@@ -1059,11 +1128,10 @@ MenuGroup:AddDropdown("DPIDropdown", {
 MenuGroup:AddDivider()
 
 MenuGroup:AddLabel("Menu Keybind"):AddKeyPicker("MenuKeybind", {
-    Default = "Insert",
+    Default = "RightShift",
     NoUI = false,
     Text = "Menu Keybind",
 })
-MenuGroup:AddLabel("Shift does NOT toggle menu")
 pcall(function()
 	local Options = Library.Options
 	if Options and Options.MenuKeybind then
