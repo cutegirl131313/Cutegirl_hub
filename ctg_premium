@@ -519,6 +519,15 @@ task.defer(function()
 	local CoreGui = game:GetService("CoreGui")
 	local UIS = game:GetService("UserInputService")
 
+	-- library must NOT own RightShift
+	pcall(function()
+		Library.ToggleKeybind = nil
+		if Library.Options and Library.Options.MenuKeybind then
+			pcall(function() Library.Options.MenuKeybind:SetValue("F8") end)
+			pcall(function() Library.Options.MenuKeybind.Value = "F8" end)
+		end
+	end)
+
 	pcall(function()
 		for _, parent in ipairs({ CoreGui, typeof(gethui) == "function" and gethui() or nil }) do
 			if parent and parent:FindFirstChild("CG_TOGGLE") then
@@ -533,9 +542,7 @@ task.defer(function()
 	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = 999999
 	gui.Parent = CoreGui
-	pcall(function()
-		if gethui then gui.Parent = gethui() end
-	end)
+	pcall(function() if gethui then gui.Parent = gethui() end end)
 
 	local function makeButton(name, y)
 		local b = Instance.new("TextButton")
@@ -572,33 +579,13 @@ task.defer(function()
 		return nil
 	end
 
-	-- ONLY Visible on/off (no Library:Toggle, no fade — same for button & shift)
+	-- ONLY .Visible — never Library:Toggle / never fade
 	local function apply(state)
 		open = state and true or false
-
 		local frame = getFrame()
 		if frame then
 			frame.Visible = open
-			-- kill white/fade leftovers
-			pcall(function()
-				frame.BackgroundTransparency = 0
-				for _, d in ipairs(frame:GetDescendants()) do
-					if d:IsA("UIStroke") then
-						d.Transparency = 0
-					elseif d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
-						if d.TextTransparency > 0 then d.TextTransparency = 0 end
-					elseif d:IsA("ImageLabel") or d:IsA("ImageButton") then
-						if d.ImageTransparency > 0 and d.ImageTransparency < 1 then
-							d.ImageTransparency = 0
-						end
-					end
-				end
-			end)
 		end
-
-		-- keep library flag in sync WITHOUT calling Toggle (avoids white fade)
-		pcall(function() Library.Toggled = open end)
-
 		toggleBtn.Text = open and "Toggle UI" or "Open UI"
 	end
 
@@ -611,18 +598,51 @@ task.defer(function()
 		lockBtn.Text = locked and "Unlock" or "Lock"
 	end)
 
-	-- RightShift = EXACT same as Toggle UI button
+	-- RightShift: same as button ONLY
+	-- also block library from seeing it by setting ToggleKeybind nil repeatedly
 	local cool = 0
 	UIS.InputBegan:Connect(function(input, gameProcessed)
 		if input.KeyCode ~= Enum.KeyCode.RightShift then return end
-		if tick() - cool < 0.15 then return end
+		-- keep library unbound
+		pcall(function() Library.ToggleKeybind = nil end)
+		if tick() - cool < 0.18 then return end
 		cool = tick()
-		apply(not open) -- identical to button
+		apply(not open)
 	end)
 
-	task.wait(0.3)
+	-- stop Obsidian Toggle from running on any key while we own shift
+	pcall(function()
+		local W = Library.Window or _G.CuteGirlWindow
+		if W and type(W.Toggle) == "function" then
+			local oldToggle = W.Toggle
+			W.Toggle = function(self, value)
+				-- if library tries to fade-toggle, just use Visible like button
+				local newState
+				if typeof(value) == "boolean" then
+					newState = value
+				else
+					newState = not open
+				end
+				apply(newState)
+				return
+			end
+			-- also wrap Library:Toggle
+			Library.Toggle = function(self, value)
+				local newState
+				if typeof(value) == "boolean" then
+					newState = value
+				else
+					newState = not open
+				end
+				apply(newState)
+			end
+		end
+	end)
+
+	task.wait(0.5)
+	pcall(function() Library.ToggleKeybind = nil end)
 	local f = getFrame()
-	if f then open = f.Visible == true end
+	if f then open = (f.Visible == true) end
 	apply(open)
 
 	Library:OnUnload(function()
@@ -1143,6 +1163,14 @@ task.spawn(function()
 
     pcall(function()
         SaveManager:LoadAutoloadConfig()
+-- kill library menu key so RightShift never triggers Obsidian fade
+pcall(function()
+	if Library.Options and Library.Options.MenuKeybind then
+		pcall(function() Library.Options.MenuKeybind:SetValue("F8") end)
+		pcall(function() Library.Options.MenuKeybind.Value = "F8" end)
+	end
+	Library.ToggleKeybind = nil
+end)
     end)
 
     task.wait(0.3)
