@@ -522,14 +522,13 @@ pcall(function()
 	Library.ToggleKeybind = nil
 end)
 
--- ========== MENU TOGGLE (ScreenGui level - no fade) ==========
+-- ========== MENU TOGGLE (1 key = close/open, no white) ==========
 task.spawn(function()
 	local CoreGui = game:GetService("CoreGui")
 	local UIS = game:GetService("UserInputService")
 
-	-- wait until window exists
 	local main = nil
-	for i = 1, 50 do
+	for _ = 1, 60 do
 		main = (Library.Window and Library.Window.MainFrame)
 			or (_G.CuteGirlWindow and _G.CuteGirlWindow.MainFrame)
 		if main then break end
@@ -537,47 +536,94 @@ task.spawn(function()
 	end
 	if not main then return end
 
-	-- parent ScreenGui of the hub (toggle this = real open/close)
 	local hubGui = main
 	while hubGui and not hubGui:IsA("ScreenGui") do
 		hubGui = hubGui.Parent
 	end
-	if not hubGui then hubGui = main end
 
-	-- kill library keybind + animations forever
+	-- permanently disable library fade + keybind
 	pcall(function()
 		if Library.Animations then Library.Animations.ToggleWindow = false end
 		Library.ToggleKeybind = nil
 	end)
-	-- replace Toggle so library never fades
-	local function hardSet(open)
+
+	-- snapshot original background colors so we can restore after white glitch
+	local colorBackup = {}
+	local function backupColors(root)
 		pcall(function()
-			if hubGui:IsA("ScreenGui") then
-				hubGui.Enabled = open
+			for _, d in ipairs(root:GetDescendants()) do
+				if d:IsA("GuiObject") then
+					colorBackup[d] = {
+						bg = d.BackgroundColor3,
+						bt = d.BackgroundTransparency,
+						tc = (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) and d.TextColor3 or nil,
+						tt = (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) and d.TextTransparency or nil,
+					}
+				end
 			end
-			main.Visible = open
-			Library.Toggled = open
+			if root:IsA("GuiObject") then
+				colorBackup[root] = { bg = root.BackgroundColor3, bt = root.BackgroundTransparency }
+			end
 		end)
 	end
+	backupColors(main)
+
+	local function restoreColors()
+		pcall(function()
+			for obj, data in pairs(colorBackup) do
+				if obj and obj.Parent then
+					pcall(function()
+						obj.BackgroundColor3 = data.bg
+						obj.BackgroundTransparency = data.bt or 0
+						if data.tc and obj.TextColor3 then
+							obj.TextColor3 = data.tc
+						end
+						if data.tt ~= nil and obj.TextTransparency then
+							obj.TextTransparency = data.tt
+						end
+					end)
+				end
+			end
+		end)
+	end
+
+	local open = true
+
+	local function setOpen(v)
+		open = v and true or false
+		pcall(function() if Library.Animations then Library.Animations.ToggleWindow = false end end)
+		pcall(function() Library.ToggleKeybind = nil end)
+		pcall(function() Library.Toggled = open end)
+
+		if hubGui and hubGui:IsA("ScreenGui") then
+			hubGui.Enabled = open
+		end
+		main.Visible = open
+
+		if open then
+			restoreColors()
+		end
+	end
+
+	-- library Toggle -> our setOpen only
 	pcall(function()
-		Library.Toggle = function(_, v)
-			local o = (typeof(v) == "boolean") and v or not (Library.Toggled == true)
-			hardSet(o)
+		local function safe(_, value)
+			if typeof(value) == "boolean" then
+				setOpen(value)
+			else
+				setOpen(not open)
+			end
 		end
-		if Library.Window then
-			Library.Window.Toggle = Library.Toggle
-		end
-		if _G.CuteGirlWindow then
-			_G.CuteGirlWindow.Toggle = Library.Toggle
-		end
+		Library.Toggle = safe
+		if Library.Window then Library.Window.Toggle = safe end
+		if _G.CuteGirlWindow then _G.CuteGirlWindow.Toggle = safe end
 	end)
 
-	-- remove old buttons
+	-- buttons
 	pcall(function()
 		for _, parent in ipairs({ CoreGui, typeof(gethui) == "function" and gethui() or nil }) do
-			if parent then
-				local o = parent:FindFirstChild("CG_TOGGLE")
-				if o then o:Destroy() end
+			if parent and parent:FindFirstChild("CG_TOGGLE") then
+				parent.CG_TOGGLE:Destroy()
 			end
 		end
 	end)
@@ -610,49 +656,63 @@ task.spawn(function()
 
 	local toggleBtn = mk("Toggle UI", 70)
 	local lockBtn = mk("Lock", 110)
-	local open = true
 	local locked = false
-
-	local function setOpen(v)
-		open = v and true or false
-		hardSet(open)
-		toggleBtn.Text = open and "Toggle UI" or "Open UI"
-	end
 
 	toggleBtn.MouseButton1Click:Connect(function()
 		setOpen(not open)
+		toggleBtn.Text = open and "Toggle UI" or "Open UI"
 	end)
 	lockBtn.MouseButton1Click:Connect(function()
 		locked = not locked
 		lockBtn.Text = locked and "Unlock" or "Lock"
 	end)
 
-	-- RightShift = exact same as button
-	local last = 0
+	-- ONE press RightShift = toggle (ignore repeats while held)
+	local holding = false
 	UIS.InputBegan:Connect(function(input, gp)
 		if input.KeyCode ~= Enum.KeyCode.RightShift then return end
-		if tick() - last < 0.2 then return end
-		last = tick()
-		-- ensure library still has no keybind
+		if holding then return end
+		holding = true
 		pcall(function() Library.ToggleKeybind = nil end)
 		setOpen(not open)
+		toggleBtn.Text = open and "Toggle UI" or "Open UI"
 	end)
-
-	-- continuous guard: library must not re-enable fade
-	task.spawn(function()
-		while sg.Parent do
-			pcall(function()
-				if Library.Animations then Library.Animations.ToggleWindow = false end
-				Library.ToggleKeybind = nil
-			end)
-			task.wait(1)
+	UIS.InputEnded:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.RightShift then
+			holding = false
 		end
 	end)
 
-	pcall(function()
-		Library:OnUnload(function()
-			pcall(function() sg:Destroy() end)
-		end)
+	-- if something turns white while open, restore every 0.5s once
+	task.spawn(function()
+		while sg.Parent do
+			pcall(function()
+				Library.ToggleKeybind = nil
+				if Library.Animations then Library.Animations.ToggleWindow = false end
+				if open then
+					-- detect washed white on main content
+					local bad = false
+					for _, d in ipairs(main:GetDescendants()) do
+						if d:IsA("Frame") then
+							local c = d.BackgroundColor3
+							if c.R > 0.9 and c.G > 0.9 and c.B > 0.9 and d.BackgroundTransparency < 0.3 then
+								if d.AbsoluteSize.X > 100 and d.AbsoluteSize.Y > 100 then
+									bad = true
+									break
+								end
+							end
+						end
+					end
+					if bad then restoreColors() end
+				end
+			end)
+			task.wait(0.4)
+		end
+	end)
+
+	toggleBtn.Text = "Toggle UI"
+	Library:OnUnload(function()
+		pcall(function() sg:Destroy() end)
 	end)
 end)
 
