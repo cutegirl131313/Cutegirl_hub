@@ -1620,36 +1620,56 @@ local function validEnemy(plr)
 	return true
 end
 
+local function partBelongsTo(char, inst)
+	if not char or not inst then return false end
+	return inst == char or inst:IsDescendantOf(char)
+end
+
 local function hasLOS(fromPos, toPos, targetChar)
 	if not S.WallCheck then return true end
-	local origin = fromPos
-	local dir = toPos - origin
+	if not fromPos or not toPos then return false end
+	local dir = toPos - fromPos
 	local dist = dir.Magnitude
-	if dist < 0.5 then return true end
+	if dist < 0.35 then return true end
+
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	local filter = {}
 	if LP.Character then table.insert(filter, LP.Character) end
-	if targetChar then table.insert(filter, targetChar) end
+	-- do NOT fully exclude targetChar: we need to know what we hit
+	-- only exclude local accessories noise via local char
 	params.FilterDescendantsInstances = filter
 	params.IgnoreWater = true
-	-- slightly shorten so we don't count the surface of the head
-	local result = Workspace:Raycast(origin, dir.Unit * math.max(dist - 0.2, 0.1), params)
-	if not result then return true end
-	-- blocked by world / other players
+	params.RespectCanCollide = false
+
+	local result = Workspace:Raycast(fromPos, dir.Unit * dist, params)
+	if not result then
+		return true
+	end
+	-- clear only if first hit is the target character (or very close to head)
+	if targetChar and partBelongsTo(targetChar, result.Instance) then
+		return true
+	end
+	-- anything else = wall / prop / other player
 	return false
 end
 
 local function canSilentTarget(head)
-	if not head then return false end
+	if not head or not head.Parent then return false end
 	local char = head:FindFirstAncestorOfClass("Model") or head.Parent
 	local plr = char and Players:GetPlayerFromCharacter(char)
-	if plr and not validEnemy(plr) then return false end
+	if not plr or not validEnemy(plr) then return false end
 	if not S.WallCheck then return true end
-	local from = Cam.CFrame.Position
+
+	local cam = Workspace.CurrentCamera
+	local fromCam = cam and cam.CFrame.Position or head.Position
 	local root = getRootPart and getRootPart()
-	if root then from = root.Position end
-	return hasLOS(from, head.Position, char)
+	local fromRoot = root and root.Position or fromCam
+
+	-- BOTH camera and root must see head, or at least one strict path
+	local okCam = hasLOS(fromCam, head.Position, char)
+	local okRoot = hasLOS(fromRoot, head.Position, char)
+	return okCam or okRoot
 end
 
 local function getHead(plr)
@@ -1664,15 +1684,19 @@ end
 
 local function getNearest(ignoreWall)
 	local root = getRootPart()
-	if not root then return nil end
+	local cam = Workspace.CurrentCamera
+	if not root and not cam then return nil end
 	local best, bd = nil, math.huge
-	local from = root.Position
+	local from = (cam and cam.CFrame.Position) or root.Position
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if validEnemy(plr) then
 			local head = getHead(plr)
 			local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
 			if head and hrp then
-				local okWall = ignoreWall or hasLOS(from, head.Position, plr.Character)
+				local okWall = true
+				if not ignoreWall then
+					okWall = hasLOS(from, head.Position, plr.Character)
+				end
 				if okWall then
 					local d = (from - hrp.Position).Magnitude
 					if d < bd then
@@ -1700,7 +1724,10 @@ local function getCrosshair(fov)
 				if on and sp.Z > 0 then
 					local dist = (Vector2.new(sp.X, sp.Y) - Vector2.new(center.X, center.Y)).Magnitude
 					if dist <= bd then
-						local okWall = (not S.WallCheck) or hasLOS(from, head.Position, plr.Character)
+						local okWall = true
+						if S.WallCheck then
+							okWall = hasLOS(from, head.Position, plr.Character)
+						end
 						if okWall then
 							bd = dist
 							best = head
@@ -1809,19 +1836,20 @@ task.spawn(function()
 		if S.SilentAim then
 			local ignoreWall = not S.WallCheck
 			head = getCrosshair(S.AimFOV or 400)
-				or getTarget(ignoreWall, S.AimFOV or 400)
-				or getNearest(ignoreWall)
-		else
+			if not head then head = getTarget(ignoreWall, S.AimFOV or 400) end
+			if not head then head = getNearest(ignoreWall) end
+		elseif S.Triggerbot then
 			head = getCrosshair(S.TrigFOV or 120)
 		end
 		head = forceHeadPart(head)
-		-- hard gate: never bend bullet through walls when WallCheck is on
-		if head and not canSilentTarget(head) then
-			head = nil
+
+		-- STRICT: wall between us and head => do NOTHING (no bend, no extra remote)
+		if not head or not canSilentTarget(head) then
+			return a, b, c, d, e
 		end
-		if head and Utility then
+
+		if Utility then
 			local pos = head.Position
-			-- remote bend origin from camera so noscope still registers head
 			local from = Cam.CFrame.Position
 			pcall(function()
 				local root = getRootPart()
@@ -1839,23 +1867,6 @@ task.spawn(function()
 				end
 			end)
 			d = true
-			-- also hard-fire remote packet for noscope weapons that drop client shot
-			if S.SilentAim then
-				pcall(function()
-					refreshMods()
-					if UseItem and EnumLibrary then
-						local lf = getFighter and getFighter()
-						if lf and lf.EquippedItem then
-							local oid = lf.EquippedItem:Get("ObjectID")
-							local se = EnumLibrary:ToEnum("StartShooting")
-							if oid and se then
-								local data2 = encodeShot(from, pos, head)
-								if data2 then UseItem:FireServer(oid, se, data2, nil) end
-							end
-						end
-					end
-				end)
-			end
 		end
 		return a, b, c, d, e
 	end
@@ -1901,19 +1912,27 @@ end)
 local lastSilent = 0
 RunService.Heartbeat:Connect(function()
 	if not S.SilentAim then return end
+	if not S.WallCheck then
+		-- wall check off: allowed
+	end
 	local holding = false
 	pcall(function()
 		holding = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
 			or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
 	end)
 	if not holding then return end
-	if tick() - lastSilent < 0.03 then return end
+	if tick() - lastSilent < 0.04 then return end
+
 	local ignoreWall = not S.WallCheck
 	local head = getCrosshair(S.AimFOV or 450)
-		or getTarget(ignoreWall, S.AimFOV or 450)
-		or getNearest(ignoreWall)
+	if not head then head = getTarget(ignoreWall, S.AimFOV or 450) end
+	if not head then head = getNearest(ignoreWall) end
 	head = forceHeadPart(head)
-	if not head or not canSilentTarget(head) then return end
+
+	-- MUST pass wall check
+	if not head then return end
+	if not canSilentTarget(head) then return end
+
 	refreshMods()
 	if not (Utility and EnumLibrary and UseItem) then return end
 	local lf = getFighter()
@@ -1924,10 +1943,11 @@ RunService.Heartbeat:Connect(function()
 	local from = Cam.CFrame.Position
 	local root = getRootPart()
 	if root then from = root.Position end
+	-- final ray again right before fire
+	local char = head:FindFirstAncestorOfClass("Model")
+	if S.WallCheck and not hasLOS(from, head.Position, char) then return end
 	local data = encodeShot(from, head.Position, head)
 	if data then
-		pcall(function() UseItem:FireServer(oid, se, data, nil) end)
-		-- double packet vs other rage users
 		pcall(function() UseItem:FireServer(oid, se, data, nil) end)
 		lastSilent = tick()
 	end
@@ -1936,19 +1956,23 @@ end)
 local lastTrig = 0
 RunService.Heartbeat:Connect(function()
 	if not S.Triggerbot then return end
-	if tick() - lastTrig < 0.1 then return end
+	if tick() - lastTrig < 0.12 then return end
 	local lf = getFighter()
 	if not lf or not lf.EquippedItem then return end
 	local head = getCrosshair(math.max(S.TrigFOV or 120, 80))
 	head = forceHeadPart(head)
-	if not head or not canSilentTarget(head) then return end
+	if not head then return end
+	if not canSilentTarget(head) then return end
+	local char = head:FindFirstAncestorOfClass("Model")
+	local from = Cam.CFrame.Position
+	local root = getRootPart()
+	if root then from = root.Position end
+	if S.WallCheck and not hasLOS(from, head.Position, char) then return end
 	refreshMods()
 	if not (Utility and EnumLibrary and UseItem) then return end
 	local ok, oid = pcall(function() return lf.EquippedItem:Get("ObjectID") end)
 	local okE, se = pcall(function() return EnumLibrary:ToEnum("StartShooting") end)
 	if not (ok and oid and okE and se) then return end
-	local root = getRootPart()
-	local from = root and root.Position or Cam.CFrame.Position
 	local data = encodeShot(from, head.Position, head)
 	if data then
 		pcall(function() UseItem:FireServer(oid, se, data, nil) end)
