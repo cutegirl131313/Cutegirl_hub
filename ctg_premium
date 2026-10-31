@@ -563,7 +563,6 @@ task.defer(function()
 	local locked = false
 
 	local function getFrame()
-		-- official Obsidian ref
 		if Library.Window and Library.Window.MainFrame then
 			return Library.Window.MainFrame
 		end
@@ -573,37 +572,32 @@ task.defer(function()
 		return nil
 	end
 
+	-- ONLY Visible on/off (no Library:Toggle, no fade — same for button & shift)
 	local function apply(state)
 		open = state and true or false
-		Library.Toggled = open
 
 		local frame = getFrame()
 		if frame then
 			frame.Visible = open
-		end
-
-		-- backup: any large frame containing title text
-		pcall(function()
-			local parents = { CoreGui }
-			pcall(function() if gethui then table.insert(parents, gethui()) end end)
-			for _, parent in ipairs(parents) do
-				for _, d in ipairs(parent:GetDescendants()) do
-					if d:IsA("TextLabel") then
-						local tx = d.Text or ""
-						if tx:find("Cute Girl Hub") then
-							local f = d
-							while f and f.Parent do
-								f = f.Parent
-								if f:IsA("Frame") and f.AbsoluteSize.X > 250 and f.AbsoluteSize.Y > 180 then
-									f.Visible = open
-									break
-								end
-							end
+			-- kill white/fade leftovers
+			pcall(function()
+				frame.BackgroundTransparency = 0
+				for _, d in ipairs(frame:GetDescendants()) do
+					if d:IsA("UIStroke") then
+						d.Transparency = 0
+					elseif d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+						if d.TextTransparency > 0 then d.TextTransparency = 0 end
+					elseif d:IsA("ImageLabel") or d:IsA("ImageButton") then
+						if d.ImageTransparency > 0 and d.ImageTransparency < 1 then
+							d.ImageTransparency = 0
 						end
 					end
 				end
-			end
-		end)
+			end)
+		end
+
+		-- keep library flag in sync WITHOUT calling Toggle (avoids white fade)
+		pcall(function() Library.Toggled = open end)
 
 		toggleBtn.Text = open and "Toggle UI" or "Open UI"
 	end
@@ -617,20 +611,18 @@ task.defer(function()
 		lockBtn.Text = locked and "Unlock" or "Lock"
 	end)
 
-	-- RightShift = toggle open/close
+	-- RightShift = EXACT same as Toggle UI button
 	local cool = 0
 	UIS.InputBegan:Connect(function(input, gameProcessed)
-		if input.KeyCode == Enum.KeyCode.RightShift then
-			if tick() - cool < 0.12 then return end
-			cool = tick()
-			apply(not open)
-		end
+		if input.KeyCode ~= Enum.KeyCode.RightShift then return end
+		if tick() - cool < 0.15 then return end
+		cool = tick()
+		apply(not open) -- identical to button
 	end)
 
-	-- sync initial
 	task.wait(0.3)
 	local f = getFrame()
-	if f then open = f.Visible end
+	if f then open = f.Visible == true end
 	apply(open)
 
 	Library:OnUnload(function()
@@ -1089,10 +1081,11 @@ MenuGroup:AddDropdown("DPIDropdown", {
 MenuGroup:AddDivider()
 
 MenuGroup:AddLabel("Menu Keybind"):AddKeyPicker("MenuKeybind", {
-    Default = "RightShift",
+    Default = "F8",
     NoUI = false,
-    Text = "Menu Keybind",
+    Text = "Menu Keybind (extra)",
 })
+MenuGroup:AddLabel("RightShift = Toggle UI (same as button)")
 pcall(function()
 	local Options = Library.Options
 	if Options and Options.MenuKeybind then
