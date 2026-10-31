@@ -514,12 +514,18 @@ pcall(function()
 	end
 end)
 
--- Floating Toggle UI / Lock + RightShift (uses Obsidian Library:Toggle)
+-- Toggle UI + Lock buttons. RightShift / Toggle UI = open/close menu.
 do
 	local CoreGui = game:GetService("CoreGui")
 	local UIS = game:GetService("UserInputService")
+
 	pcall(function()
-		if CoreGui:FindFirstChild("CuteGirlFloatUI") then CoreGui.CuteGirlFloatUI:Destroy() end
+		local old = CoreGui:FindFirstChild("CuteGirlFloatUI")
+		if old then old:Destroy() end
+		if gethui then
+			local h = gethui()
+			if h and h:FindFirstChild("CuteGirlFloatUI") then h.CuteGirlFloatUI:Destroy() end
+		end
 	end)
 
 	local sg = Instance.new("ScreenGui")
@@ -527,76 +533,100 @@ do
 	sg.ResetOnSpawn = false
 	sg.IgnoreGuiInset = true
 	sg.DisplayOrder = 2147483646
-	sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	pcall(function()
-		if gethui then sg.Parent = gethui() else sg.Parent = CoreGui end
-	end)
-	if not sg.Parent then sg.Parent = CoreGui end
+	sg.Parent = CoreGui
+	pcall(function() if gethui then sg.Parent = gethui() end end)
 
-	local function makeBtn(text, y)
+	local function btn(text, y)
 		local b = Instance.new("TextButton")
-		b.Size = UDim2.fromOffset(88, 28)
+		b.Size = UDim2.fromOffset(90, 28)
 		b.Position = UDim2.fromOffset(10, y)
 		b.BackgroundColor3 = Color3.fromRGB(16, 16, 20)
 		b.BorderSizePixel = 0
-		b.Text = text
 		b.Font = Enum.Font.GothamBold
 		b.TextSize = 12
 		b.TextColor3 = Color3.fromRGB(240, 240, 245)
+		b.Text = text
 		b.Parent = sg
 		local s = Instance.new("UIStroke")
-		s.Thickness = 1
 		s.Color = Color3.fromRGB(0, 0, 0)
+		s.Thickness = 1
 		s.Parent = b
 		return b
 	end
 
-	local toggleBtn = makeBtn("Toggle UI", 90)
-	local lockBtn = makeBtn("Lock", 122)
+	local toggleBtn = btn("Toggle UI", 90)
+	local lockBtn = btn("Lock", 122)
 	_G.CuteGirlUILocked = false
 
-	local function isOpen()
-		local v = true
-		pcall(function()
-			if Library.Toggled ~= nil then v = Library.Toggled and true or false end
-		end)
-		return v
+	local function getMain()
+		local W = Library.Window or _G.CuteGirlWindow
+		if W and W.MainFrame then return W.MainFrame, W end
+		return nil, W
 	end
 
-	local function setMenuOpen(open)
-		open = not not open
-		-- 1) Window:Toggle(boolean) if available
+	local function isOpen()
+		local main = getMain()
+		if main then
+			return main.Visible == true
+		end
+		if Library.Toggled ~= nil then
+			return Library.Toggled == true
+		end
+		return true
+	end
+
+	local function setOpen(open)
+		open = open and true or false
+		Library.Toggled = open
+
+		local main, W = getMain()
+		-- direct force (works even if library fade is stuck)
+		if main then
+			main.Visible = open
+			pcall(function()
+				main.BackgroundTransparency = open and 0 or 1
+			end)
+			-- restore children transparency when opening
+			if open then
+				pcall(function()
+					for _, d in ipairs(main:GetDescendants()) do
+						if d:IsA("GuiObject") then
+							if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+								if d.TextTransparency > 0.9 then d.TextTransparency = 0 end
+							elseif d:IsA("ImageLabel") or d:IsA("ImageButton") then
+								if d.ImageTransparency > 0.9 then d.ImageTransparency = 0 end
+							else
+								if d.BackgroundTransparency > 0.95 and d.BackgroundTransparency < 1 then
+									-- leave fully transparent decorative
+								elseif d.BackgroundTransparency > 0.9 then
+									d.BackgroundTransparency = 0
+								end
+							end
+						elseif d:IsA("UIStroke") then
+							if d.Transparency > 0.9 then d.Transparency = 0 end
+						end
+					end
+				end)
+			end
+		end
+
+		-- also call official toggle for state consistency
 		pcall(function()
-			local W = _G.CuteGirlWindow or Library.Window
 			if W and type(W.Toggle) == "function" then
-				W:Toggle(open)
+				-- only if state differs after force
+				if Library.Toggled ~= open then
+					W:Toggle(open)
+				end
 			end
 		end)
-		-- 2) Library:Toggle(boolean)
-		pcall(function()
-			Library:Toggle(open)
-		end)
-		-- 3) force Toggled + MainFrame
-		pcall(function() Library.Toggled = open end)
-		pcall(function()
-			local W = _G.CuteGirlWindow or Library.Window
-			if W then
-				if W.MainFrame then W.MainFrame.Visible = open end
-				if W.Holder then W.Holder.Visible = open end
-			end
-		end)
-		pcall(function()
-			if Library.Window and Library.Window.MainFrame then
-				Library.Window.MainFrame.Visible = open
-			end
-		end)
+
 		toggleBtn.Text = open and "Toggle UI" or "Open UI"
 	end
 
-	_G.CuteGirlSetMenuOpen = setMenuOpen
+	_G.CuteGirlSetMenuOpen = setOpen
 
 	toggleBtn.MouseButton1Click:Connect(function()
-		setMenuOpen(not isOpen())
+		setOpen(not isOpen())
 	end)
 
 	lockBtn.MouseButton1Click:Connect(function()
@@ -604,21 +634,14 @@ do
 		lockBtn.Text = _G.CuteGirlUILocked and "Unlock" or "Lock"
 	end)
 
-	-- RightShift always toggles (gameProcessed ignored so it still works)
-	UIS.InputBegan:Connect(function(input, _gp)
-		if input.KeyCode == Enum.KeyCode.RightShift then
-			setMenuOpen(not isOpen())
-			return
-		end
-		-- honor MenuKeybind if changed
-		pcall(function()
-			local kb = Library.Options and Library.Options.MenuKeybind
-			if kb and kb.Value and input.KeyCode == Enum.KeyCode[tostring(kb.Value)] then
-				if input.KeyCode ~= Enum.KeyCode.RightShift then
-					setMenuOpen(not isOpen())
-				end
-			end
-		end)
+	-- RightShift: close if open, open if closed
+	local lastToggle = 0
+	UIS.InputBegan:Connect(function(input, gp)
+		if input.KeyCode ~= Enum.KeyCode.RightShift then return end
+		-- debounce double-fire from library + us
+		if tick() - lastToggle < 0.15 then return end
+		lastToggle = tick()
+		setOpen(not isOpen())
 	end)
 
 	pcall(function()
