@@ -514,108 +514,93 @@ pcall(function()
 	end
 end)
 
--- Toggle UI + Lock buttons. RightShift / Toggle UI = open/close menu.
-do
+-- ========== TOGGLE UI (from scratch) ==========
+task.defer(function()
 	local CoreGui = game:GetService("CoreGui")
 	local UIS = game:GetService("UserInputService")
 
 	pcall(function()
-		local old = CoreGui:FindFirstChild("CuteGirlFloatUI")
-		if old then old:Destroy() end
-		if gethui then
-			local h = gethui()
-			if h and h:FindFirstChild("CuteGirlFloatUI") then h.CuteGirlFloatUI:Destroy() end
+		for _, parent in ipairs({ CoreGui, typeof(gethui) == "function" and gethui() or nil }) do
+			if parent and parent:FindFirstChild("CG_TOGGLE") then
+				parent.CG_TOGGLE:Destroy()
+			end
 		end
 	end)
 
-	local sg = Instance.new("ScreenGui")
-	sg.Name = "CuteGirlFloatUI"
-	sg.ResetOnSpawn = false
-	sg.IgnoreGuiInset = true
-	sg.DisplayOrder = 2147483646
-	sg.Parent = CoreGui
-	pcall(function() if gethui then sg.Parent = gethui() end end)
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "CG_TOGGLE"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.DisplayOrder = 999999
+	gui.Parent = CoreGui
+	pcall(function()
+		if gethui then gui.Parent = gethui() end
+	end)
 
-	local function btn(text, y)
+	local function makeButton(name, y)
 		local b = Instance.new("TextButton")
-		b.Size = UDim2.fromOffset(90, 28)
-		b.Position = UDim2.fromOffset(10, y)
-		b.BackgroundColor3 = Color3.fromRGB(16, 16, 20)
+		b.Name = name
+		b.Size = UDim2.fromOffset(96, 30)
+		b.Position = UDim2.fromOffset(12, y)
+		b.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
 		b.BorderSizePixel = 0
 		b.Font = Enum.Font.GothamBold
-		b.TextSize = 12
-		b.TextColor3 = Color3.fromRGB(240, 240, 245)
-		b.Text = text
-		b.Parent = sg
-		local s = Instance.new("UIStroke")
-		s.Color = Color3.fromRGB(0, 0, 0)
-		s.Thickness = 1
-		s.Parent = b
+		b.TextSize = 13
+		b.TextColor3 = Color3.fromRGB(255, 255, 255)
+		b.Text = name
+		b.Parent = gui
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 1
+		stroke.Color = Color3.fromRGB(0, 0, 0)
+		stroke.Parent = b
 		return b
 	end
 
-	local toggleBtn = btn("Toggle UI", 90)
-	local lockBtn = btn("Lock", 122)
-	_G.CuteGirlUILocked = false
+	local toggleBtn = makeButton("Toggle UI", 88)
+	local lockBtn = makeButton("Lock", 122)
 
-	local function getMain()
-		local W = Library.Window or _G.CuteGirlWindow
-		if W and W.MainFrame then return W.MainFrame, W end
-		return nil, W
+	local open = true
+	local locked = false
+
+	local function getFrame()
+		-- official Obsidian ref
+		if Library.Window and Library.Window.MainFrame then
+			return Library.Window.MainFrame
+		end
+		if _G.CuteGirlWindow and _G.CuteGirlWindow.MainFrame then
+			return _G.CuteGirlWindow.MainFrame
+		end
+		return nil
 	end
 
-	local function isOpen()
-		local main = getMain()
-		if main then
-			return main.Visible == true
-		end
-		if Library.Toggled ~= nil then
-			return Library.Toggled == true
-		end
-		return true
-	end
-
-	local function setOpen(open)
-		open = open and true or false
+	local function apply(state)
+		open = state and true or false
 		Library.Toggled = open
 
-		local main, W = getMain()
-		-- direct force (works even if library fade is stuck)
-		if main then
-			main.Visible = open
-			pcall(function()
-				main.BackgroundTransparency = open and 0 or 1
-			end)
-			-- restore children transparency when opening
-			if open then
-				pcall(function()
-					for _, d in ipairs(main:GetDescendants()) do
-						if d:IsA("GuiObject") then
-							if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
-								if d.TextTransparency > 0.9 then d.TextTransparency = 0 end
-							elseif d:IsA("ImageLabel") or d:IsA("ImageButton") then
-								if d.ImageTransparency > 0.9 then d.ImageTransparency = 0 end
-							else
-								if d.BackgroundTransparency > 0.95 and d.BackgroundTransparency < 1 then
-									-- leave fully transparent decorative
-								elseif d.BackgroundTransparency > 0.9 then
-									d.BackgroundTransparency = 0
-								end
-							end
-						elseif d:IsA("UIStroke") then
-							if d.Transparency > 0.9 then d.Transparency = 0 end
-						end
-					end
-				end)
-			end
+		local frame = getFrame()
+		if frame then
+			frame.Visible = open
 		end
 
-		-- also call official toggle for state consistency
+		-- backup: any large frame containing title text
 		pcall(function()
-			if W and type(W.Toggle) == "function" then
-				-- only if state differs after force
-				if Library.Toggled ~= open then
-					W:Toggle(open)
+			local parents = { CoreGui }
+			pcall(function() if gethui then table.insert(parents, gethui()) end end)
+			for _, parent in ipairs(parents) do
+				for _, d in ipairs(parent:GetDescendants()) do
+					if d:IsA("TextLabel") then
+						local tx = d.Text or ""
+						if tx:find("Cute Girl Hub") then
+							local f = d
+							while f and f.Parent do
+								f = f.Parent
+								if f:IsA("Frame") and f.AbsoluteSize.X > 250 and f.AbsoluteSize.Y > 180 then
+									f.Visible = open
+									break
+								end
+							end
+						end
+					end
 				end
 			end
 		end)
@@ -623,33 +608,35 @@ do
 		toggleBtn.Text = open and "Toggle UI" or "Open UI"
 	end
 
-	_G.CuteGirlSetMenuOpen = setOpen
-
 	toggleBtn.MouseButton1Click:Connect(function()
-		setOpen(not isOpen())
+		apply(not open)
 	end)
 
 	lockBtn.MouseButton1Click:Connect(function()
-		_G.CuteGirlUILocked = not _G.CuteGirlUILocked
-		lockBtn.Text = _G.CuteGirlUILocked and "Unlock" or "Lock"
+		locked = not locked
+		lockBtn.Text = locked and "Unlock" or "Lock"
 	end)
 
-	-- RightShift: close if open, open if closed
-	local lastToggle = 0
-	UIS.InputBegan:Connect(function(input, gp)
-		if input.KeyCode ~= Enum.KeyCode.RightShift then return end
-		-- debounce double-fire from library + us
-		if tick() - lastToggle < 0.15 then return end
-		lastToggle = tick()
-		setOpen(not isOpen())
+	-- RightShift = toggle open/close
+	local cool = 0
+	UIS.InputBegan:Connect(function(input, gameProcessed)
+		if input.KeyCode == Enum.KeyCode.RightShift then
+			if tick() - cool < 0.12 then return end
+			cool = tick()
+			apply(not open)
+		end
 	end)
 
-	pcall(function()
-		Library:OnUnload(function()
-			pcall(function() sg:Destroy() end)
-		end)
+	-- sync initial
+	task.wait(0.3)
+	local f = getFrame()
+	if f then open = f.Visible end
+	apply(open)
+
+	Library:OnUnload(function()
+		pcall(function() gui:Destroy() end)
 	end)
-end
+end)
 
 
 local Tabs = {
