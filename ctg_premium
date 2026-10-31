@@ -507,6 +507,108 @@ local Window = Library:CreateWindow({
     ShowCustomCursor = true,
 })
 
+-- Floating Toggle UI / Lock (PC + mobile)
+pcall(function()
+	local CoreGui = game:GetService("CoreGui")
+	local UIS = game:GetService("UserInputService")
+	if CoreGui:FindFirstChild("CuteGirlFloatUI") then
+		CoreGui.CuteGirlFloatUI:Destroy()
+	end
+	local sg = Instance.new("ScreenGui")
+	sg.Name = "CuteGirlFloatUI"
+	sg.ResetOnSpawn = false
+	sg.IgnoreGuiInset = true
+	sg.DisplayOrder = 200000
+	sg.Parent = CoreGui
+
+	local function makeBtn(text, y)
+		local b = Instance.new("TextButton")
+		b.Size = UDim2.fromOffset(78, 26)
+		b.Position = UDim2.fromOffset(10, y)
+		b.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+		b.BorderSizePixel = 0
+		b.Text = text
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 12
+		b.TextColor3 = Color3.fromRGB(235, 235, 240)
+		b.AutoButtonColor = true
+		b.Parent = sg
+		local st = Instance.new("UIStroke")
+		st.Color = Color3.fromRGB(0, 0, 0)
+		st.Thickness = 1
+		st.Parent = b
+		return b
+	end
+
+	local toggleBtn = makeBtn("Toggle UI", 90)
+	local lockBtn = makeBtn("Lock", 120)
+	local uiOpen = true
+	local uiLocked = false
+
+	local function setMenuVisible(v)
+		uiOpen = not not v
+		pcall(function()
+			if Library.Toggled ~= nil then
+				Library.Toggled = uiOpen
+			end
+		end)
+		pcall(function()
+			if type(Library.Toggle) == "function" and Library.Toggled ~= uiOpen then
+				Library:Toggle()
+			end
+		end)
+		-- force main window frames
+		pcall(function()
+			for _, g in ipairs(CoreGui:GetDescendants()) do
+				if g:IsA("Frame") and (g.Name == "Main" or g.Name == "Window" or g.Name == "Outer") then
+					local title = g:FindFirstChild("Title") or g:FindFirstChildWhichIsA("TextLabel", true)
+					if title and tostring(title.Text or ""):find("Cute Girl") then
+						g.Visible = uiOpen
+					end
+				end
+			end
+		end)
+		toggleBtn.Text = uiOpen and "Toggle UI" or "Open UI"
+	end
+
+	local function setLocked(v)
+		uiLocked = not not v
+		lockBtn.Text = uiLocked and "Unlock" or "Lock"
+		pcall(function()
+			-- try common library flags
+			Library.CantDragToggle = uiLocked
+		end)
+		pcall(function()
+			for _, g in ipairs(CoreGui:GetDescendants()) do
+				if g:IsA("TextButton") or g:IsA("Frame") then
+					local n = g.Name:lower()
+					if n:find("title") or n:find("topbar") or n:find("header") then
+						if uiLocked then
+							g.Active = false
+						else
+							g.Active = true
+						end
+					end
+				end
+			end
+		end)
+	end
+
+	toggleBtn.MouseButton1Click:Connect(function()
+		setMenuVisible(not uiOpen)
+	end)
+	lockBtn.MouseButton1Click:Connect(function()
+		setLocked(not uiLocked)
+	end)
+
+	-- Block RightShift / LeftShift from being forced as menu if user still has old config
+	-- Insert is default; Shift only moves character
+	Library:OnUnload(function()
+		pcall(function() sg:Destroy() end)
+	end)
+end)
+
+
 local Tabs = {
     Combat = Window:AddTab("Combat", "crosshair"),
     Rage = Window:AddTab("Rage", "swords"),
@@ -531,7 +633,7 @@ _G.HUB = _G.HUB or {
 	RapidFire = false, NoRecoil = false, NoSpread = false,
 	WalkSpeed = false, WalkSpeedValue = 45, Freecam = false, FreecamSpeed = 50,
 	RageBot = false, RageMode = "gun", Orbit = false, OrbitStuds = 8,
-	RageMulti = 6, RageBoost = true, ImmunityCheck = false,
+	RageMulti = 6, RageBoost = true, ImmunityCheck = true,
 }
 local S = _G.HUB
 
@@ -556,6 +658,7 @@ end
 do
 	local RageBox = Tabs.Rage:AddLeftGroupbox("Rage")
 	RageBox:AddToggle("RageBotSwitch", { Text = "Rage Bot", Default = false, Callback = function(v) S.RageBot = v; if runRageBot then runRageBot() end end })
+	RageBox:AddToggle("ImmunityCheck", { Text = "Immunity Check", Default = true, Callback = function(v) S.ImmunityCheck = v end })
 	RageBox:AddToggle("RageBoost", { Text = "Rage Boost", Default = true, Callback = function(v) S.RageBoost = v end })
 	RageBox:AddSlider("RageMulti", { Text = "Multi Shots", Default = 5, Min = 1, Max = 8, Rounding = 0, Callback = function(v) S.RageMulti = v end })
 	RageBox:AddToggle("OrbitSwitch", { Text = "Orbit", Default = false, Callback = function(v) S.Orbit = v; if setOrbit then setOrbit(v) end end })
@@ -956,10 +1059,17 @@ MenuGroup:AddDropdown("DPIDropdown", {
 MenuGroup:AddDivider()
 
 MenuGroup:AddLabel("Menu Keybind"):AddKeyPicker("MenuKeybind", {
-    Default = "RightShift",
+    Default = "Insert",
     NoUI = false,
     Text = "Menu Keybind",
 })
+MenuGroup:AddLabel("Shift does NOT toggle menu")
+pcall(function()
+	local Options = Library.Options
+	if Options and Options.MenuKeybind then
+		Library.ToggleKeybind = Options.MenuKeybind
+	end
+end)
 
 MenuGroup:AddButton({
     Text = "Unload Script",
@@ -1074,6 +1184,43 @@ local function _getRageHead(char)
 	return char:FindFirstChild("HitboxHead") or char:FindFirstChild("HitboxHeadSmall") or char:FindFirstChild("Head")
 end
 
+local function _isImmune(plr, char)
+	if not S.ImmunityCheck then return false end
+	char = char or (plr and plr.Character)
+	if not char then return true end
+	-- ForceField
+	if char:FindFirstChildOfClass("ForceField") then return true end
+	-- common attributes / spawn protection flags
+	local immuneAttrs = {
+		"Immune", "IsImmune", "Invincible", "Invulnerable", "GodMode",
+		"SpawnProtection", "Protected", "NoDamage", "CanBeDamaged",
+	}
+	for _, a in ipairs(immuneAttrs) do
+		local v = nil
+		pcall(function() v = char:GetAttribute(a) end)
+		if v == true then return true end
+		if a == "CanBeDamaged" and v == false then return true end
+		pcall(function()
+			if plr then
+				local pv = plr:GetAttribute(a)
+				if pv == true then v = true end
+				if a == "CanBeDamaged" and pv == false then v = true end
+			end
+		end)
+		if v == true and a ~= "CanBeDamaged" then return true end
+		if a == "CanBeDamaged" and v == false then return true end
+	end
+	-- humanoid state sometimes used
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		local ok, st = pcall(function() return hum:GetState() end)
+		if ok and st == Enum.HumanoidStateType.Physics then
+			-- not always immune; skip
+		end
+	end
+	return false
+end
+
 task.spawn(function()
 	pcall(function()
 		local LP = game:GetService("Players").LocalPlayer
@@ -1132,6 +1279,8 @@ task.spawn(function()
 				if _isSameTeam(targetPlr) then return end
 				local hum = targetChar:FindFirstChildOfClass("Humanoid")
 				if hum and hum.Health <= 0 then return end
+				-- immunity check (rage only) — silent does NOT use this
+				if _isImmune(targetPlr, targetChar) then return end
 				-- beat enemy rage: zero delay + multi origin shots
 				if tick() - lastFire < 0.0 then return end
 				lastFire = tick()
@@ -1236,7 +1385,7 @@ task.spawn(function()
 						if plr ~= LP and plr.Character and not _isSameTeam(plr) then
 							local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
 							local hum = plr.Character:FindFirstChild("Humanoid")
-							if hrp and hum and hum.Health > 0 then
+							if hrp and hum and hum.Health > 0 and not _isImmune(plr, plr.Character) then
 								local d = (Vector3.new(refPos.X,0,refPos.Z) - Vector3.new(hrp.Position.X,0,hrp.Position.Z)).Magnitude
 								if d < best then best = d closest = plr end
 							end
