@@ -621,9 +621,7 @@ task.spawn(function()
 			Library.ToggleKeybind = nil
 			Library.Toggled = open
 		end)
-		if hubGui and hubGui:IsA("ScreenGui") then
-			hubGui.Enabled = open
-		end
+		-- ONLY MainFrame — never disable ScreenGui (keeps Toggle UI button alive)
 		main.Visible = open
 		if open then restoreColors() end
 		if not isMobile then freeMouseCamera() end
@@ -660,7 +658,7 @@ task.spawn(function()
 		sg.IgnoreGuiInset = true
 		sg.DisplayOrder = 1000000
 		sg.Parent = CoreGui
-		pcall(function() if gethui then sg.Parent = gethui() end end)
+		-- stay on CoreGui only so menu hide never parents-over this
 
 		local function mk(txt, y)
 			local b = Instance.new("TextButton")
@@ -777,7 +775,7 @@ _G.HUB = _G.HUB or {
 	RapidFire = false, NoRecoil = false, NoSpread = false,
 	WalkSpeed = false, WalkSpeedValue = 45, Freecam = false, FreecamSpeed = 50,
 	RageBot = false, RageMode = "gun", Orbit = false, OrbitStuds = 8,
-	RageMulti = 6, RageBoost = true, ImmunityCheck = true,
+	RageMulti = 8, RageBoost = true, ImmunityCheck = false,
 }
 local S = _G.HUB
 
@@ -802,9 +800,10 @@ end
 do
 	local RageBox = Tabs.Rage:AddLeftGroupbox("Rage")
 	RageBox:AddToggle("RageBotSwitch", { Text = "Rage Bot", Default = false, Callback = function(v) S.RageBot = v; if runRageBot then runRageBot() end end })
-	RageBox:AddToggle("ImmunityCheck", { Text = "Immunity Check", Default = true, Callback = function(v) S.ImmunityCheck = v end })
-	RageBox:AddToggle("RageBoost", { Text = "Rage Boost", Default = true, Callback = function(v) S.RageBoost = v end })
-	RageBox:AddSlider("RageMulti", { Text = "Multi Shots", Default = 5, Min = 1, Max = 8, Rounding = 0, Callback = function(v) S.RageMulti = v end })
+	RageBox:AddToggle("RageBoost", { Text = "Rage Boost (~0.1s)", Default = true, Callback = function(v) S.RageBoost = v end })
+	RageBox:AddSlider("RageMulti", { Text = "Multi Shots", Default = 8, Min = 1, Max = 16, Rounding = 0, Callback = function(v) S.RageMulti = v end })
+	RageBox:AddLabel("Immunity: OFF (always pierce)")
+	RageBox:AddLabel("Rage Counter shows kills")
 	RageBox:AddToggle("OrbitSwitch", { Text = "Orbit", Default = false, Callback = function(v) S.Orbit = v; if setOrbit then setOrbit(v) end end })
 	RageBox:AddSlider("OrbitStuds", { Text = "Orbit Studs", Default = 8, Min = 2, Max = 30, Rounding = 0, Callback = function(v) S.OrbitStuds = v; if setOrbitStuds then setOrbitStuds(v) end end })
 	RageBox:AddToggle("VoidSpamRage", { Text = "Void Spam", Default = false, Callback = function(v) S.VoidSpam = v end })
@@ -1343,39 +1342,6 @@ local function _getRageHead(char)
 end
 
 local function _isImmune(plr, char)
-	if not S.ImmunityCheck then return false end
-	char = char or (plr and plr.Character)
-	if not char then return true end
-	-- ForceField
-	if char:FindFirstChildOfClass("ForceField") then return true end
-	-- common attributes / spawn protection flags
-	local immuneAttrs = {
-		"Immune", "IsImmune", "Invincible", "Invulnerable", "GodMode",
-		"SpawnProtection", "Protected", "NoDamage", "CanBeDamaged",
-	}
-	for _, a in ipairs(immuneAttrs) do
-		local v = nil
-		pcall(function() v = char:GetAttribute(a) end)
-		if v == true then return true end
-		if a == "CanBeDamaged" and v == false then return true end
-		pcall(function()
-			if plr then
-				local pv = plr:GetAttribute(a)
-				if pv == true then v = true end
-				if a == "CanBeDamaged" and pv == false then v = true end
-			end
-		end)
-		if v == true and a ~= "CanBeDamaged" then return true end
-		if a == "CanBeDamaged" and v == false then return true end
-	end
-	-- humanoid state sometimes used
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum then
-		local ok, st = pcall(function() return hum:GetState() end)
-		if ok and st == Enum.HumanoidStateType.Physics then
-			-- not always immune; skip
-		end
-	end
 	return false
 end
 
@@ -1437,16 +1403,15 @@ task.spawn(function()
 				if _isSameTeam(targetPlr) then return end
 				local hum = targetChar:FindFirstChildOfClass("Humanoid")
 				if hum and hum.Health <= 0 then return end
-				-- immunity check (rage only) — silent does NOT use this
-				if _isImmune(targetPlr, targetChar) then return end
-				-- beat enemy rage: zero delay + multi origin shots
-				if tick() - lastFire < 0.0 then return end
+				-- no immunity skip
+				-- Rage Boost: dump enough packets to kill ~0.1s
+				local interval = (S.RageBoost and 0.02) or 0.05
+				if tick() - lastFire < interval then return end
 				lastFire = tick()
 				local objId = getObjId()
 				if objId then cachedId = objId else objId = cachedId end
 				if not objId or not _ssEnum then return end
 				local head = _halmu.currentTarget
-				-- re-resolve head every shot (anti desync swap)
 				if targetChar then
 					head = targetChar:FindFirstChild("HitboxHead")
 						or targetChar:FindFirstChild("HitboxHeadSmall")
@@ -1455,16 +1420,17 @@ task.spawn(function()
 					_halmu.currentTarget = head
 				end
 				if not head then return end
-				local multi = math.clamp(tonumber(S.RageMulti) or 6, 1, 10)
+				local multi = math.clamp(tonumber(S.RageMulti) or 8, 1, 16)
+				if S.RageBoost then multi = math.max(multi, 10) end
 				local hp = head.Position
 				local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
 				local camPos = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position
-				-- origins: on head, above head, from camera, from root (harder for enemy desync to dodge)
 				local origins = {
 					hp + Vector3.new(0, 0.05, 0),
+					hp + Vector3.new(0, 0.2, 0),
 					hp + Vector3.new(0, 0.35, 0),
-					hp + Vector3.new(0.1, 0.1, 0),
-					hp + Vector3.new(-0.1, 0.1, 0),
+					hp + Vector3.new(0.12, 0.1, 0),
+					hp + Vector3.new(-0.12, 0.1, 0),
 					camPos or hp,
 					myRoot and myRoot.Position or hp,
 				}
@@ -1472,6 +1438,17 @@ task.spawn(function()
 					local origin = origins[((i - 1) % #origins) + 1]
 					pcall(function()
 						_useItemRemote:FireServer(objId, _ssEnum, buildShot(origin, head), nil)
+					end)
+				end
+				-- second burst for boost (approx 0.1s TTK)
+				if S.RageBoost then
+					task.defer(function()
+						for i = 1, math.min(multi, 8) do
+							local origin = origins[((i - 1) % #origins) + 1]
+							pcall(function()
+								_useItemRemote:FireServer(objId, _ssEnum, buildShot(origin, head), nil)
+							end)
+						end
 					end)
 				end
 			end)
@@ -1567,6 +1544,68 @@ task.spawn(function()
 			hrp.CFrame = CFrame.new(tp + offset, tp)
 			hrp.AssemblyLinearVelocity = Vector3.zero
 		end)
+	end)
+end)
+
+
+-- Rage kill counter
+_G.CuteGirlRageKills = _G.CuteGirlRageKills or 0
+task.spawn(function()
+	local CoreGui = game:GetService("CoreGui")
+	pcall(function()
+		local o = CoreGui:FindFirstChild("CG_RageCounter")
+		if o then o:Destroy() end
+	end)
+	local sg = Instance.new("ScreenGui")
+	sg.Name = "CG_RageCounter"
+	sg.ResetOnSpawn = false
+	sg.IgnoreGuiInset = true
+	sg.DisplayOrder = 50
+	sg.Parent = CoreGui
+	local lab = Instance.new("TextLabel")
+	lab.Size = UDim2.fromOffset(150, 28)
+	lab.Position = UDim2.new(0, 14, 1, -120)
+	lab.BackgroundColor3 = Color3.fromRGB(16, 16, 20)
+	lab.BackgroundTransparency = 0.25
+	lab.BorderSizePixel = 0
+	lab.Font = Enum.Font.GothamBold
+	lab.TextSize = 14
+	lab.TextColor3 = Color3.fromRGB(255, 80, 80)
+	lab.Text = "Rage Kills: 0"
+	lab.Parent = sg
+	local st = Instance.new("UIStroke")
+	st.Thickness = 1
+	st.Color = Color3.fromRGB(0, 0, 0)
+	st.Parent = lab
+	local function refresh()
+		lab.Text = "Rage Kills: " .. tostring(_G.CuteGirlRageKills or 0)
+		lab.Visible = (S.RageBot == true)
+	end
+	local tracked = {}
+	local function hookPlr(plr)
+		if plr == LP or tracked[plr] then return end
+		tracked[plr] = true
+		local function onChar(char)
+			local hum = char:WaitForChild("Humanoid", 5)
+			if not hum then return end
+			hum.Died:Connect(function()
+				if S.RageBot and _halmu and _halmu.rageEnabled then
+					local t = _halmu.currentTarget
+					local tc = t and (t:FindFirstAncestorOfClass("Model") or t.Parent)
+					if tc == char then
+						_G.CuteGirlRageKills = (_G.CuteGirlRageKills or 0) + 1
+						refresh()
+					end
+				end
+			end)
+		end
+		if plr.Character then onChar(plr.Character) end
+		plr.CharacterAdded:Connect(onChar)
+	end
+	for _, plr in ipairs(Players:GetPlayers()) do hookPlr(plr) end
+	Players.PlayerAdded:Connect(hookPlr)
+	RunService.Heartbeat:Connect(function()
+		refresh()
 	end)
 end)
 
