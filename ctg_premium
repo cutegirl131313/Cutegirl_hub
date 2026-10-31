@@ -504,7 +504,8 @@ local Window = Library:CreateWindow({
     Footer = "premium",
     Icon = 95816097006870,
     NotifySide = "Right",
-    ShowCustomCursor = true,
+    ShowCustomCursor = false,
+    UnlockMouseWhileOpen = true,
 })
 _G.CuteGirlWindow = Window
 pcall(function()
@@ -589,6 +590,31 @@ task.spawn(function()
 
 	local open = true
 
+	local function freeMouseCamera()
+		pcall(function()
+			UIS.MouseBehavior = Enum.MouseBehavior.Default
+			UIS.MouseIconEnabled = true
+			UIS.ModalEnabled = false
+		end)
+		pcall(function()
+			local cam = workspace.CurrentCamera
+			if cam and cam.CameraType == Enum.CameraType.Scriptable then
+				-- don't touch if freecam feature is intentionally on
+				if not (S and S.Freecam) then
+					cam.CameraType = Enum.CameraType.Custom
+				end
+			end
+		end)
+		-- clear modal frames from library
+		pcall(function()
+			for _, d in ipairs(main:GetDescendants()) do
+				if d:IsA("TextButton") and d.Modal == true then
+					d.Modal = false
+				end
+			end
+		end)
+	end
+
 	local function setOpen(v)
 		open = v and true or false
 		pcall(function() if Library.Animations then Library.Animations.ToggleWindow = false end end)
@@ -602,7 +628,11 @@ task.spawn(function()
 
 		if open then
 			restoreColors()
+		else
+			-- menu closed -> camera/mouse must work
+			freeMouseCamera()
 		end
+		freeMouseCamera()
 	end
 
 	-- library Toggle -> our setOpen only
@@ -683,14 +713,12 @@ task.spawn(function()
 		end
 	end)
 
-	-- if something turns white while open, restore every 0.5s once
 	task.spawn(function()
 		while sg.Parent do
 			pcall(function()
 				Library.ToggleKeybind = nil
 				if Library.Animations then Library.Animations.ToggleWindow = false end
 				if open then
-					-- detect washed white on main content
 					local bad = false
 					for _, d in ipairs(main:GetDescendants()) do
 						if d:IsA("Frame") then
@@ -704,9 +732,11 @@ task.spawn(function()
 						end
 					end
 					if bad then restoreColors() end
+				else
+					freeMouseCamera()
 				end
 			end)
-			task.wait(0.4)
+			task.wait(0.35)
 		end
 	end)
 
