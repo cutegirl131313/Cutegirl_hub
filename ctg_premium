@@ -1170,30 +1170,57 @@ task.spawn(function()
 			end)
 		end
 
-		-- Desync
+		-- Desync: server sees offset pos, local view stays real
+		-- Only while RageBot ON (and optional S.Desync). Fixed save/restore so it doesn't jitter.
+		pcall(function() RunService:UnbindFromRenderStep("HalmuRestoreDesync") end)
+		_halmu.RealCFrame = nil
+		_halmu.RealVelocity = nil
 		RunService.Heartbeat:Connect(function()
 			pcall(function()
 				local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-				if _halmu.rageEnabled and _halmu.currentTarget and hrp then
+				if not hrp then
+					_halmu.RealCFrame, _halmu.RealVelocity = nil, nil
+					return
+				end
+				local want = _halmu.rageEnabled and _halmu.currentTarget and (_halmu.rageEnabled)
+				-- also allow standalone desync flag if present
+				if S.Desync and not _halmu.rageEnabled then
+					want = true
+				end
+				if not want or not _halmu.currentTarget then
+					_halmu.RealCFrame, _halmu.RealVelocity = nil, nil
+					return
+				end
+				-- capture real pose once per desync session from visual frame
+				if not _halmu.RealCFrame then
 					_halmu.RealCFrame = hrp.CFrame
 					_halmu.RealVelocity = hrp.AssemblyLinearVelocity
-					local tp = _halmu.currentTarget.Position
-					local dist = math.max(0.5, (_halmu.desyncDist or 3) * 0.5)
-					-- tighter desync so enemy rage loses register race
-					hrp.CFrame = CFrame.new(tp + Vector3.new(0, dist, 0), tp)
-					hrp.AssemblyLinearVelocity = Vector3.zero
-					hrp.AssemblyAngularVelocity = Vector3.zero
+				else
+					-- keep real CF updated from last restored visual (set in RenderStep)
+					if _halmu._visualCF then
+						_halmu.RealCFrame = _halmu._visualCF
+						_halmu.RealVelocity = _halmu._visualVel or Vector3.zero
+					end
 				end
+				local tp = _halmu.currentTarget.Position
+				local dist = math.clamp(_halmu.desyncDist or 3, 1, 15)
+				-- offset above target (stable, not random)
+				hrp.CFrame = CFrame.new(tp + Vector3.new(0, dist, 0), tp)
+				hrp.AssemblyLinearVelocity = Vector3.zero
+				hrp.AssemblyAngularVelocity = Vector3.zero
 			end)
 		end)
-		RunService:BindToRenderStep("HalmuRestoreDesync", 150, function()
+		RunService:BindToRenderStep("HalmuRestoreDesync", Enum.RenderPriority.Camera.Value - 1, function()
 			pcall(function()
 				local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-				if hrp and _halmu.RealCFrame then
-					hrp.CFrame = _halmu.RealCFrame
-					if _halmu.RealVelocity then hrp.AssemblyLinearVelocity = _halmu.RealVelocity end
-					_halmu.RealCFrame, _halmu.RealVelocity = nil, nil
+				if not hrp or not _halmu.RealCFrame then return end
+				-- show real position locally
+				hrp.CFrame = _halmu.RealCFrame
+				if _halmu.RealVelocity then
+					hrp.AssemblyLinearVelocity = _halmu.RealVelocity
 				end
+				_halmu._visualCF = hrp.CFrame
+				_halmu._visualVel = hrp.AssemblyLinearVelocity
 			end)
 		end)
 
@@ -1598,16 +1625,31 @@ local function hasLOS(fromPos, toPos, targetChar)
 	local origin = fromPos
 	local dir = toPos - origin
 	local dist = dir.Magnitude
-	if dist < 1 then return true end
+	if dist < 0.5 then return true end
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	local filter = { LP.Character }
+	local filter = {}
+	if LP.Character then table.insert(filter, LP.Character) end
 	if targetChar then table.insert(filter, targetChar) end
 	params.FilterDescendantsInstances = filter
 	params.IgnoreWater = true
-	local result = Workspace:Raycast(origin, dir.Unit * dist, params)
+	-- slightly shorten so we don't count the surface of the head
+	local result = Workspace:Raycast(origin, dir.Unit * math.max(dist - 0.2, 0.1), params)
 	if not result then return true end
+	-- blocked by world / other players
 	return false
+end
+
+local function canSilentTarget(head)
+	if not head then return false end
+	local char = head:FindFirstAncestorOfClass("Model") or head.Parent
+	local plr = char and Players:GetPlayerFromCharacter(char)
+	if plr and not validEnemy(plr) then return false end
+	if not S.WallCheck then return true end
+	local from = Cam.CFrame.Position
+	local root = getRootPart and getRootPart()
+	if root then from = root.Position end
+	return hasLOS(from, head.Position, char)
 end
 
 local function getHead(plr)
@@ -1765,7 +1807,6 @@ task.spawn(function()
 		end
 		local head
 		if S.SilentAim then
-			-- wall/team checks honored via getTarget/getNearest flags
 			local ignoreWall = not S.WallCheck
 			head = getCrosshair(S.AimFOV or 400)
 				or getTarget(ignoreWall, S.AimFOV or 400)
@@ -1774,6 +1815,10 @@ task.spawn(function()
 			head = getCrosshair(S.TrigFOV or 120)
 		end
 		head = forceHeadPart(head)
+		-- hard gate: never bend bullet through walls when WallCheck is on
+		if head and not canSilentTarget(head) then
+			head = nil
+		end
 		if head and Utility then
 			local pos = head.Position
 			-- remote bend origin from camera so noscope still registers head
@@ -1863,13 +1908,12 @@ RunService.Heartbeat:Connect(function()
 	end)
 	if not holding then return end
 	if tick() - lastSilent < 0.03 then return end
-	-- team check via validEnemy; wall check optional
 	local ignoreWall = not S.WallCheck
 	local head = getCrosshair(S.AimFOV or 450)
 		or getTarget(ignoreWall, S.AimFOV or 450)
 		or getNearest(ignoreWall)
 	head = forceHeadPart(head)
-	if not head then return end
+	if not head or not canSilentTarget(head) then return end
 	refreshMods()
 	if not (Utility and EnumLibrary and UseItem) then return end
 	local lf = getFighter()
@@ -1896,7 +1940,8 @@ RunService.Heartbeat:Connect(function()
 	local lf = getFighter()
 	if not lf or not lf.EquippedItem then return end
 	local head = getCrosshair(math.max(S.TrigFOV or 120, 80))
-	if not head then return end
+	head = forceHeadPart(head)
+	if not head or not canSilentTarget(head) then return end
 	refreshMods()
 	if not (Utility and EnumLibrary and UseItem) then return end
 	local ok, oid = pcall(function() return lf.EquippedItem:Get("ObjectID") end)
