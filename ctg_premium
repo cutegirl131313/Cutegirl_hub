@@ -1,12 +1,14 @@
 -- ============================================================
--- KEY SYSTEM (10 one-time keys, unlock persists per UserId)
+-- KEY SYSTEM (safe gate — does not break hub UI)
 -- ============================================================
-local HttpService = game:GetService("HttpService")
-local Players = game:GetService("Players")
-local LP = Players.LocalPlayer
+do
+	local HttpService = game:GetService("HttpService")
+	local Players = game:GetService("Players")
+	local LP = Players.LocalPlayer
+	local UIS = game:GetService("UserInputService")
 
-local VALID_KEYS = {
-	["CG-UWWT-BZ0C-D1HM-CNO3"] = true,
+	local VALID_KEYS = {
+		["CG-UWWT-BZ0C-D1HM-CNO3"] = true,
 	["CG-G93Y-SKVW-MXV7-DQTM"] = true,
 	["CG-1NWY-JZZV-M4JO-U98D"] = true,
 	["CG-VZH1-JED8-KX65-7V67"] = true,
@@ -16,197 +18,253 @@ local VALID_KEYS = {
 	["CG-JFPS-1EFB-GVDS-3QYK"] = true,
 	["CG-J7MX-HYPP-X34K-6CCR"] = true,
 	["CG-BQMW-U0J2-5TXU-WDIM"] = true
-}
+	}
 
-local AUTH_FILE = "CuteGirlHub/auth.json"
-local USED_FILE = "CuteGirlHub/used_keys.json"
+	local AUTH_FILE = "CuteGirlHub/auth.json"
+	local USED_FILE = "CuteGirlHub/used_keys.json"
+	local DISCORD_URL = "https://discord.gg/gBbMcEMQwt"
 
-local function ensureFolder()
-	pcall(function()
-		if makefolder then makefolder("CuteGirlHub") end
-	end)
-end
+	local function ensureFolder()
+		pcall(function()
+			if makefolder then makefolder("CuteGirlHub") end
+		end)
+	end
 
-local function readJSON(path)
-	local ok, data = pcall(function()
-		if isfile and isfile(path) and readfile then
-			return HttpService:JSONDecode(readfile(path))
+	local function readJSON(path)
+		local ok, data = pcall(function()
+			if isfile and isfile(path) and readfile then
+				return HttpService:JSONDecode(readfile(path))
+			end
+			return nil
+		end)
+		return ok and data or nil
+	end
+
+	local function writeJSON(path, tbl)
+		pcall(function()
+			ensureFolder()
+			if writefile then
+				writefile(path, HttpService:JSONEncode(tbl))
+			end
+		end)
+	end
+
+	local function loadUsed()
+		local d = readJSON(USED_FILE)
+		return type(d) == "table" and d or {}
+	end
+
+	local function isUnlocked()
+		local d = readJSON(AUTH_FILE)
+		return type(d) == "table" and d.uid == LP.UserId and d.unlocked == true
+	end
+
+	local function markUnlocked(key)
+		writeJSON(AUTH_FILE, {
+			uid = LP.UserId,
+			unlocked = true,
+			key = key,
+			time = os.time(),
+		})
+	end
+
+	local function tryRedeem(raw)
+		local key = tostring(raw or ""):gsub("%s+", ""):upper()
+		if key == "" then return false, "Enter a key" end
+		if not VALID_KEYS[key] then return false, "Invalid key" end
+		if isUnlocked() then return true, "Already unlocked" end
+		local used = loadUsed()
+		if used[key] and used[key] ~= LP.UserId then
+			return false, "Key already used"
 		end
-		return nil
-	end)
-	return ok and data or nil
-end
-
-local function writeJSON(path, tbl)
-	pcall(function()
-		ensureFolder()
-		if writefile then
-			writefile(path, HttpService:JSONEncode(tbl))
-		end
-	end)
-end
-
-local function loadUsedKeys()
-	local data = readJSON(USED_FILE)
-	if type(data) ~= "table" then return {} end
-	return data
-end
-
-local function saveUsedKeys(used)
-	writeJSON(USED_FILE, used)
-end
-
-local function isAlreadyUnlocked()
-	local data = readJSON(AUTH_FILE)
-	if type(data) ~= "table" then return false end
-	if data.uid == LP.UserId and data.unlocked == true then
-		return true
-	end
-	return false
-end
-
-local function markUnlocked(key)
-	writeJSON(AUTH_FILE, {
-		uid = LP.UserId,
-		unlocked = true,
-		key = key,
-		time = os.time(),
-	})
-end
-
-local function tryRedeem(key)
-	key = tostring(key or ""):gsub("%s+", ""):upper()
-	if key == "" then
-		return false, "Enter a key"
-	end
-	if not VALID_KEYS[key] then
-		return false, "Invalid key"
-	end
-	local used = loadUsedKeys()
-	-- already unlocked this account with any key -> allow
-	if isAlreadyUnlocked() then
-		return true, "Already unlocked"
-	end
-	-- key used by someone else on this executor storage
-	if used[key] and used[key] ~= LP.UserId then
-		return false, "Key already used"
-	end
-	-- key used by this user before -> keep access
-	if used[key] == LP.UserId then
+		used[key] = LP.UserId
+		writeJSON(USED_FILE, used)
 		markUnlocked(key)
-		return true, "Welcome back"
+		return true, "Key accepted"
 	end
-	-- first use
-	used[key] = LP.UserId
-	saveUsedKeys(used)
-	markUnlocked(key)
-	return true, "Key accepted"
-end
 
--- block rest of script until unlocked
-if not isAlreadyUnlocked() then
-	local unlocked = false
-	local CoreGui = game:GetService("CoreGui")
-	local sg = Instance.new("ScreenGui")
-	sg.Name = "CuteGirlKeyGate"
-	sg.ResetOnSpawn = false
-	sg.IgnoreGuiInset = true
-	sg.DisplayOrder = 1e9
-	pcall(function() sg.Parent = CoreGui end)
-	if not sg.Parent then sg.Parent = LP:WaitForChild("PlayerGui") end
-
-	local frame = Instance.new("Frame")
-	frame.AnchorPoint = Vector2.new(0.5, 0.5)
-	frame.Position = UDim2.fromScale(0.5, 0.5)
-	frame.Size = UDim2.fromOffset(340, 190)
-	frame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
-	frame.BorderSizePixel = 0
-	frame.Parent = sg
-	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
-	local st = Instance.new("UIStroke")
-	st.Color = Color3.fromRGB(0, 0, 0)
-	st.Thickness = 1.5
-	st.Parent = frame
-
-	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, -20, 0, 28)
-	title.Position = UDim2.fromOffset(10, 12)
-	title.BackgroundTransparency = 1
-	title.Font = Enum.Font.GothamBold
-	title.TextSize = 16
-	title.TextColor3 = Color3.fromRGB(255, 255, 255)
-	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.Text = "Cute Girl Hub — License Key"
-	title.Parent = frame
-
-	local box = Instance.new("TextBox")
-	box.Size = UDim2.new(1, -20, 0, 34)
-	box.Position = UDim2.fromOffset(10, 55)
-	box.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
-	box.TextColor3 = Color3.fromRGB(240, 240, 245)
-	box.PlaceholderText = "CG-XXXX-XXXX-XXXX-XXXX"
-	box.PlaceholderColor3 = Color3.fromRGB(120, 120, 130)
-	box.Font = Enum.Font.Code
-	box.TextSize = 14
-	box.Text = ""
-	box.ClearTextOnFocus = false
-	box.Parent = frame
-	Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
-
-	local status = Instance.new("TextLabel")
-	status.Size = UDim2.new(1, -20, 0, 20)
-	status.Position = UDim2.fromOffset(10, 98)
-	status.BackgroundTransparency = 1
-	status.Font = Enum.Font.Gotham
-	status.TextSize = 12
-	status.TextColor3 = Color3.fromRGB(180, 180, 190)
-	status.TextXAlignment = Enum.TextXAlignment.Left
-	status.Text = "Enter key to continue"
-	status.Parent = frame
-
-	local btn = Instance.new("TextButton")
-	btn.Size = UDim2.new(1, -20, 0, 36)
-	btn.Position = UDim2.fromOffset(10, 130)
-	btn.BackgroundColor3 = Color3.fromRGB(140, 70, 200)
-	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	btn.Font = Enum.Font.GothamBold
-	btn.TextSize = 14
-	btn.Text = "Unlock"
-	btn.Parent = frame
-	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-
-	btn.MouseButton1Click:Connect(function()
-		local ok, msg = tryRedeem(box.Text)
-		status.Text = msg
-		if ok then
-			status.TextColor3 = Color3.fromRGB(120, 255, 160)
-			unlocked = true
-			task.wait(0.35)
-			sg:Destroy()
-		else
-			status.TextColor3 = Color3.fromRGB(255, 100, 100)
+	if not isUnlocked() then
+		local unlocked = false
+		local CoreGui = game:GetService("CoreGui")
+		local parent = CoreGui
+		local sg = Instance.new("ScreenGui")
+		sg.Name = "CuteGirlKeyGate"
+		sg.ResetOnSpawn = false
+		sg.IgnoreGuiInset = true
+		sg.DisplayOrder = 999999
+		sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		pcall(function() sg.Parent = CoreGui end)
+		if not sg.Parent then
+			sg.Parent = LP:WaitForChild("PlayerGui", 5)
 		end
-	end)
 
-	box.FocusLost:Connect(function(enter)
-		if enter then
-			btn.MouseButton1Click:Wait()
+		-- full dim
+		local dim = Instance.new("Frame")
+		dim.Size = UDim2.fromScale(1, 1)
+		dim.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		dim.BackgroundTransparency = 0.35
+		dim.BorderSizePixel = 0
+		dim.Parent = sg
+
+		-- sharp panel (no big corner radius)
+		local panel = Instance.new("Frame")
+		panel.AnchorPoint = Vector2.new(0.5, 0.5)
+		panel.Position = UDim2.fromScale(0.5, 0.5)
+		panel.Size = UDim2.fromOffset(380, 250)
+		panel.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
+		panel.BorderSizePixel = 0
+		panel.Parent = sg
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = Color3.fromRGB(220, 60, 90)
+		stroke.Thickness = 2
+		stroke.Parent = panel
+		-- thin inner line
+		local inner = Instance.new("Frame")
+		inner.Size = UDim2.new(1, -8, 1, -8)
+		inner.Position = UDim2.fromOffset(4, 4)
+		inner.BackgroundTransparency = 1
+		inner.BorderSizePixel = 0
+		inner.Parent = panel
+		local ist = Instance.new("UIStroke")
+		ist.Color = Color3.fromRGB(40, 40, 48)
+		ist.Thickness = 1
+		ist.Parent = inner
+
+		local title = Instance.new("TextLabel")
+		title.Size = UDim2.new(1, -24, 0, 28)
+		title.Position = UDim2.fromOffset(12, 14)
+		title.BackgroundTransparency = 1
+		title.Font = Enum.Font.GothamBlack
+		title.TextSize = 18
+		title.TextColor3 = Color3.fromRGB(255, 255, 255)
+		title.TextXAlignment = Enum.TextXAlignment.Left
+		title.Text = "CUTE GIRL HUB"
+		title.Parent = panel
+
+		local sub = Instance.new("TextLabel")
+		sub.Size = UDim2.new(1, -24, 0, 16)
+		sub.Position = UDim2.fromOffset(12, 42)
+		sub.BackgroundTransparency = 1
+		sub.Font = Enum.Font.Code
+		sub.TextSize = 12
+		sub.TextColor3 = Color3.fromRGB(220, 60, 90)
+		sub.TextXAlignment = Enum.TextXAlignment.Left
+		sub.Text = "LICENSE KEY REQUIRED"
+		sub.Parent = panel
+
+		local box = Instance.new("TextBox")
+		box.Size = UDim2.new(1, -24, 0, 36)
+		box.Position = UDim2.fromOffset(12, 72)
+		box.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+		box.BorderSizePixel = 0
+		box.Text = ""
+		box.PlaceholderText = "CG-XXXX-XXXX-XXXX-XXXX"
+		box.PlaceholderColor3 = Color3.fromRGB(90, 90, 100)
+		box.TextColor3 = Color3.fromRGB(240, 240, 245)
+		box.Font = Enum.Font.Code
+		box.TextSize = 14
+		box.ClearTextOnFocus = false
+		box.Parent = panel
+		local bst = Instance.new("UIStroke")
+		bst.Color = Color3.fromRGB(60, 60, 70)
+		bst.Thickness = 1
+		bst.Parent = box
+
+		-- Discord row under key box
+		local discBtn = Instance.new("TextButton")
+		discBtn.Size = UDim2.new(1, -24, 0, 32)
+		discBtn.Position = UDim2.fromOffset(12, 116)
+		discBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+		discBtn.BorderSizePixel = 0
+		discBtn.Font = Enum.Font.GothamBold
+		discBtn.TextSize = 13
+		discBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		discBtn.Text = "Get Key  |  discord.gg/gBbMcEMQwt"
+		discBtn.AutoButtonColor = true
+		discBtn.Parent = panel
+		local dst = Instance.new("UIStroke")
+		dst.Color = Color3.fromRGB(0, 0, 0)
+		dst.Thickness = 1
+		dst.Parent = discBtn
+
+		local status = Instance.new("TextLabel")
+		status.Size = UDim2.new(1, -24, 0, 18)
+		status.Position = UDim2.fromOffset(12, 154)
+		status.BackgroundTransparency = 1
+		status.Font = Enum.Font.Gotham
+		status.TextSize = 12
+		status.TextColor3 = Color3.fromRGB(160, 160, 170)
+		status.TextXAlignment = Enum.TextXAlignment.Left
+		status.Text = "Enter license key"
+		status.Parent = panel
+
+		local unlockBtn = Instance.new("TextButton")
+		unlockBtn.Size = UDim2.new(1, -24, 0, 40)
+		unlockBtn.Position = UDim2.fromOffset(12, 182)
+		unlockBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 90)
+		unlockBtn.BorderSizePixel = 0
+		unlockBtn.Font = Enum.Font.GothamBlack
+		unlockBtn.TextSize = 15
+		unlockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		unlockBtn.Text = "UNLOCK"
+		unlockBtn.Parent = panel
+		local ust = Instance.new("UIStroke")
+		ust.Color = Color3.fromRGB(0, 0, 0)
+		ust.Thickness = 1.5
+		ust.Parent = unlockBtn
+
+		local function doUnlock()
+			local ok, msg = tryRedeem(box.Text)
+			status.Text = msg
+			if ok then
+				status.TextColor3 = Color3.fromRGB(100, 255, 140)
+				unlocked = true
+				task.delay(0.25, function()
+					pcall(function() sg:Destroy() end)
+				end)
+			else
+				status.TextColor3 = Color3.fromRGB(255, 90, 90)
+			end
 		end
-	end)
 
-	-- yield until unlocked
-	while not unlocked do
-		task.wait(0.1)
+		unlockBtn.MouseButton1Click:Connect(doUnlock)
+		box.FocusLost:Connect(function(enter)
+			if enter then doUnlock() end
+		end)
+
+		-- update status helper for discord
+		discBtn.MouseButton1Click:Connect(function()
+			pcall(function()
+				if setclipboard then setclipboard(DISCORD_URL) end
+			end)
+			pcall(function()
+				local gui = game:GetService("GuiService")
+				if gui and gui.OpenBrowserWindow then
+					gui:OpenBrowserWindow(DISCORD_URL)
+				end
+			end)
+			-- mobile / some executors
+			pcall(function()
+				if typeof(open_browser) == "function" then open_browser(DISCORD_URL) end
+			end)
+			status.Text = "Discord link copied — " .. DISCORD_URL
+			status.TextColor3 = Color3.fromRGB(140, 160, 255)
+		end)
+
+		-- hard wait without touching library
+		while not unlocked do
+			task.wait(0.15)
+			if not sg.Parent then
+				-- if gui destroyed somehow, re-check auth
+				if isUnlocked() then break end
+			end
+		end
 	end
-else
-	-- already unlocked this UserId
-	print("[CuteGirlHub] key already unlocked for this account")
 end
 
 -- ============================================================
--- MAIN HUB (after key)
+-- MAIN HUB
 -- ============================================================
-
 -- Cute Girl Hub (Full Fixed Script - Shooting Range & Stability Fix)
 -- Uses LinoriaLib UI library
 
