@@ -1069,8 +1069,24 @@ _G.HUB = _G.HUB or {
 	WalkSpeed = false, WalkSpeedValue = 45, Freecam = false, FreecamSpeed = 50,
 	RageBot = false, RageMode = "gun", Orbit = false, OrbitStuds = 8,
 	RageMulti = 12, RageBoost = true, ImmunityCheck = false,
+	ForceHead = true, HeadPriority = 100, ActivationChance = 100,
+	NotReloading = true, ScopedOnly = false, WithinFOV = true,
+	NotShielded = true, SilentManipulate = true, ThirdPerson = false,
+	JumpPower = false, JumpPowerValue = 50, Watermark = true,
 }
 local S = _G.HUB
+-- ensure new option keys always exist
+do
+	local defs = {
+		ForceHead = true, HeadPriority = 100, ActivationChance = 100,
+		NotReloading = true, ScopedOnly = false, WithinFOV = true,
+		SilentManipulate = true, ThirdPerson = false,
+		JumpPower = false, JumpPowerValue = 50,
+	}
+	for k, v in pairs(defs) do
+		if S[k] == nil then S[k] = v end
+	end
+end
 
 -- Combat UI
 do
