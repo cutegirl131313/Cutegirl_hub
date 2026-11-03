@@ -1282,7 +1282,7 @@ local Tabs = {
 _G.HUB = _G.HUB or {
 	Aimbot = false, AimSmooth = 0.3, AimFOV = 300, SilentAim = false, Triggerbot = false,
 	TrigFOV = 120, ShowFOV = false, Wallbang = false,
-	VoidSpam = false, Desync = false, AutoReload = false, HitNotify = false, HitSound = false,
+	VoidSpam = false, Desync = false, AutoReload = false, HitNotify = false, HitSound = false, KillSound = false, HitSoundName = "TF2 HitSound", KillSoundName = "Fatality",
 	AntiFlash = false, AntiSmoke = false, CustomCrosshair = false, ShowSpectators = false,
 	ESP = false, ESP_Name = false, ESP_HealthBar = false, ESP_Distance = false,
 	ESP_Box = false, ESP_Skeleton = false, ESP_Weapon = false, ESP_Chams = false,
@@ -1292,7 +1292,7 @@ _G.HUB = _G.HUB or {
 	RapidFire = false, NoRecoil = false, NoSpread = false,
 	WalkSpeed = false, WalkSpeedValue = 45, Freecam = false, FreecamSpeed = 50,
 	RageBot = false, RageMode = "gun", Orbit = false, OrbitStuds = 8,
-	RageMulti = 12, RageBoost = true, ImmunityCheck = false,
+	RageMulti = 18, RageBoost = true, ImmunityCheck = false,
 	ForceHead = true, HeadPriority = 100, ActivationChance = 100,
 	NotReloading = true, ScopedOnly = false, WithinFOV = true,
 	NotShielded = true, SilentManipulate = true, ThirdPerson = false,
@@ -1357,7 +1357,20 @@ do
 	FireBox:AddToggle("NoSpread", { Text = "No Spread", Default = false, Callback = function(v) S.NoSpread = v end })
 	FireBox:AddToggle("NoRecoil", { Text = "No Recoil", Default = false, Callback = function(v) S.NoRecoil = v end })
 	FireBox:AddToggle("HitNotify", { Text = "Hit Notify", Default = false, Callback = function(v) S.HitNotify = v end })
-	FireBox:AddToggle("HitSound", { Text = "Hit Sound", Default = false, Callback = function(v) S.HitSound = v end })
+	FireBox:AddToggle("HitSound", { Text = "Hit Sound", Default = false, Callback = function(v) S.HitSound = v; _G.HUB.HitSound = v end })
+	FireBox:AddDropdown("HitSoundName", {
+		Text = "Hit Sound Type",
+		Values = { "TF2 HitSound", "TF2", "TF2 Squasher", "TF2 Retro", "TF2 Space", "TF2 Vortex", "TF2 Beepo", "TF2 Bat", "TF2 Pow", "Quake Hitsound", "Csgo", "Bop", "Headshot", "Grenade Hit", "HL Revolver", "HL Elevator", "Minecraft XP", "BameWare" },
+		Default = 1,
+		Callback = function(v) S.HitSoundName = v; _G.HUB.HitSoundName = v end
+	})
+	FireBox:AddToggle("KillSound", { Text = "Kill Sound", Default = false, Callback = function(v) S.KillSound = v; _G.HUB.KillSound = v end })
+	FireBox:AddDropdown("KillSoundName", {
+		Text = "Kill Sound Type",
+		Values = { "Fatality", "Fatality MKX", "Double Kill", "Triple Kill", "Over Kill", "Kill Tacular", "KillTrocity", "Killing Spree", "Killing Frenzy", "Clutch Kill", "Carrier Kill", "Taco Bell", "Kombat", "ScreamingKid", "Sit Dog", "Headshot", "Csgo" },
+		Default = 1,
+		Callback = function(v) S.KillSoundName = v; _G.HUB.KillSoundName = v end
+	})
 end
 do
 	local RageBox = Tabs.Rage:AddLeftGroupbox("Rage")
@@ -1395,7 +1408,7 @@ do
 	MoveBox:AddSlider("WalkSpeedValue", { Text = "Walk Value", Default = 45, Min = 16, Max = 200, Rounding = 0, Callback = function(v) S.WalkSpeedValue = v end })
 	MoveBox:AddToggle("Freecam", { Text = "Freecam", Default = false, Callback = function(v) S.Freecam = v end })
 	MoveBox:AddToggle("JumpPower", { Text = "Jump Power", Default = false, Callback = function(v) S.JumpPower = v; _G.HUB.JumpPower = v; pcall(function() Library:Notify(v and "Jump Power ON" or "Jump Power OFF", 2) end) end })
-	MoveBox:AddSlider("JumpPowerValue", { Text = "Jump Value", Default = 50, Min = 20, Max = 200, Rounding = 0, Callback = function(v) S.JumpPowerValue = v; _G.HUB.JumpPowerValue = v end })
+	MoveBox:AddSlider("JumpPowerValue", { Text = "Jump Value", Default = 80, Min = 40, Max = 250, Rounding = 0, Callback = function(v) S.JumpPowerValue = v; _G.HUB.JumpPowerValue = v end })
 	MoveBox:AddToggle("DoubleJump", { Text = "Double Jump", Default = false, Callback = function(v) S.DoubleJump = v; _G.HUB.DoubleJump = v; pcall(function() Library:Notify(v and "Double Jump ON" or "OFF", 2) end) end })
 	MoveBox:AddToggle("InfJump", { Text = "Infinite Jump", Default = false, Callback = function(v) S.InfJump = v; _G.HUB.InfJump = v; pcall(function() Library:Notify(v and "Inf Jump ON" or "OFF", 2) end) end })
 	MoveBox:AddToggle("ThirdPerson", { Text = "Third Person", Default = false, Callback = function(v) S.ThirdPerson = v; _G.HUB.ThirdPerson = v; if Library and Library.Notify then Library:Notify(v and "Third Person ON" or "Third Person OFF", 2) end end })
@@ -2009,13 +2022,49 @@ task.spawn(function()
 					head = char:FindFirstChild("HitboxHead") or char:FindFirstChild("HitboxHeadSmall") or char:FindFirstChild("Head") or head
 					_halmu.currentTarget = head
 				end
-				local multi = math.clamp(tonumber(S.RageMulti) or 10, 1, 20)
-				if S.RageBoost then multi = math.max(multi, 12) end
+				-- strip spawn/immunity flags on target (0-sec cut)
+				pcall(function()
+					local c = head:FindFirstAncestorOfClass("Model") or head.Parent
+					if c then
+						for _, key in ipairs({
+							"Invulnerable","Invincibility","SpawnProtection","Protected",
+							"Immunity","IsImmune","NoDamage","ForceField","Shielded",
+							"CanTakeDamage","GodMode","iFrame","IFrame","SpawnGuard"
+						}) do
+							pcall(function()
+								if c:GetAttribute(key) ~= nil then
+									c:SetAttribute(key, false)
+								end
+							end)
+							pcall(function()
+								local h = c:FindFirstChildOfClass("Humanoid")
+								if h and h:GetAttribute(key) ~= nil then
+									h:SetAttribute(key, false)
+								end
+							end)
+						end
+						for _, d in ipairs(c:GetDescendants()) do
+							if d:IsA("ForceField") then pcall(function() d:Destroy() end) end
+						end
+						local hum = c:FindFirstChildOfClass("Humanoid")
+						if hum then
+							pcall(function()
+								hum:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
+							end)
+						end
+					end
+				end)
+				local multi = math.clamp(tonumber(S.RageMulti) or 16, 8, 30)
+				if S.RageBoost ~= false then multi = math.max(multi, 18) end
 				local hp = head.Position
 				local camPos = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position or hp
 				local origins = {
-					hp + Vector3.new(0, 0.1, 0),
-					hp + Vector3.new(0, 0.25, 0),
+					hp,
+					hp + Vector3.new(0, 0.05, 0),
+					hp + Vector3.new(0, 0.15, 0),
+					hp + Vector3.new(0, 0.3, 0),
+					hp + Vector3.new(0.1, 0.1, 0),
+					hp + Vector3.new(-0.1, 0.1, 0),
 					camPos,
 				}
 				for i = 1, multi do
@@ -3771,27 +3820,87 @@ RunService.Heartbeat:Connect(function()
 	end)
 end)
 
+-- Kicia SFX map (hit / kill dropdowns)
+local KICIA_SOUNDS = {
+	["HL Revolver"] = "rbxassetid://1678424590",
+	["HL Elevator"] = "rbxassetid://237877850",
+	["TF2 HitSound"] = "rbxassetid://3455144981",
+	["TF2"] = "rbxassetid://8255306220",
+	["TF2 Squasher"] = "rbxassetid://3466981613",
+	["TF2 Retro"] = "rbxassetid://3466984142",
+	["TF2 Space"] = "rbxassetid://3466982899",
+	["TF2 Vortex"] = "rbxassetid://3466980212",
+	["TF2 Beepo"] = "rbxassetid://3466987025",
+	["TF2 Bat"] = "rbxassetid://3333907347",
+	["TF2 Pow"] = "rbxassetid://679798995",
+	["Quake Hitsound"] = "rbxassetid://4868633804",
+	["Csgo"] = "rbxassetid://5764885315",
+	["Bop"] = "rbxassetid://8829676038",
+	["Headshot"] = "rbxassetid://8418469749",
+	["Grenade Hit"] = "rbxassetid://5684745272",
+	["Minecraft XP"] = "rbxassetid://1053296915",
+	["BameWare"] = "rbxassetid://7898991882",
+	["Fatality"] = "rbxassetid://7347423703",
+	["Fatality MKX"] = "rbxassetid://6721975770",
+	["Double Kill"] = "rbxassetid://6818527307",
+	["Triple Kill"] = "rbxassetid://6818526855",
+	["Over Kill"] = "rbxassetid://6818526995",
+	["Kill Tacular"] = "rbxassetid://6818527070",
+	["KillTrocity"] = "rbxassetid://6818544945",
+	["Killing Spree"] = "rbxassetid://6822465178",
+	["Killing Frenzy"] = "rbxassetid://6822465319",
+	["Clutch Kill"] = "rbxassetid://7379106527",
+	["Carrier Kill"] = "rbxassetid://7139067012",
+	["Taco Bell"] = "rbxassetid://5689199277",
+	["Kombat"] = "rbxassetid://8527433497",
+	["Fart"] = "rbxassetid://131314452",
+	["ScreamingKid"] = "rbxassetid://5980352978",
+	["Sit Dog"] = "rbxassetid://7349055654",
+}
+
+local function playHubSound(name, vol)
+	local id = KICIA_SOUNDS[name] or KICIA_SOUNDS["TF2 HitSound"]
+	if not id then return end
+	pcall(function()
+		local s = Instance.new("Sound")
+		s.SoundId = id
+		s.Volume = vol or 1
+		s.PlaybackSpeed = 1
+		s.Parent = game:GetService("SoundService")
+		s:Play()
+		task.delay(3, function() pcall(function() s:Destroy() end) end)
+	end)
+end
+
 local lastHP = {}
 RunService.Heartbeat:Connect(function()
-    if not S.HitNotify then return end
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LP and plr.Character then
-            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
-            if hum then
-                local id = plr.UserId
-                local hp = hum.Health
-                local prev = lastHP[id]
-                
-                if prev and hp < prev - 0.1 then
-                    local dmg = math.floor(prev - hp + 0.5)
-                    if dmg > 0 then
-                        showHitUI(tostring(dmg))
-                    end
-                end
-                lastHP[id] = hp
-            end
-        end
-    end
+	local need = S.HitNotify or S.HitSound or S.KillSound
+	if not need then return end
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LP and plr.Character then
+			local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+			if hum then
+				local id = plr.UserId
+				local hp = hum.Health
+				local prev = lastHP[id]
+				if prev and hp < prev - 0.15 then
+					local dmg = math.floor(prev - hp + 0.5)
+					if dmg > 0 then
+						if S.HitNotify then
+							pcall(function() showHitUI(tostring(dmg)) end)
+						end
+						if S.HitSound then
+							playHubSound(S.HitSoundName or "TF2 HitSound", 1)
+						end
+					end
+					if hp <= 0 and prev > 0 and S.KillSound then
+						playHubSound(S.KillSoundName or "Fatality", 1.2)
+					end
+				end
+				lastHP[id] = hp
+			end
+		end
+	end
 end)
 
 task.spawn(function()
@@ -4107,8 +4216,9 @@ Library:OnUnload(function()
 end)
 
 
+
 --==========================================================================
--- HARD RECOVERY: movement + silent option bridge (always runs)
+-- HARD RECOVERY v2: jump + third person (always on)
 --==========================================================================
 task.spawn(function()
 	local Players = game:GetService("Players")
@@ -4119,22 +4229,6 @@ task.spawn(function()
 
 	_G.HUB = _G.HUB or {}
 	local H = _G.HUB
-	H.JumpPower = H.JumpPower or false
-	H.JumpPowerValue = H.JumpPowerValue or 50
-	H.DoubleJump = H.DoubleJump or false
-	H.InfJump = H.InfJump or false
-	H.ThirdPerson = H.ThirdPerson or false
-	H.WalkSpeed = H.WalkSpeed or false
-	H.WalkSpeedValue = H.WalkSpeedValue or 45
-	H.ForceHead = (H.ForceHead ~= false)
-	H.HeadPriority = H.HeadPriority or 100
-	H.ActivationChance = H.ActivationChance or 100
-	H.NotReloading = (H.NotReloading ~= false)
-	H.ScopedOnly = H.ScopedOnly or false
-	H.WithinFOV = (H.WithinFOV ~= false)
-	H.SilentManipulate = (H.SilentManipulate ~= false)
-	H.DeviceSpoof = H.DeviceSpoof or false
-	H.DeviceName = H.DeviceName or "PC"
 
 	local function hum()
 		return LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
@@ -4143,41 +4237,55 @@ task.spawn(function()
 		return LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
 	end
 
-	-- ===== Jump / Double / Inf =====
+	-- Jump: default value 80 feels like a real boost; slider 40-250
 	local jumpsLeft, lastJump = 0, 0
 	local function boostJump()
 		local r, h = root(), hum()
 		if not r or not h then return end
-		local jp = tonumber(H.JumpPowerValue) or 50
-		local vy = math.clamp(jp * 1.25, 45, 200)
+		local jp = tonumber(H.JumpPowerValue) or 80
+		-- map slider to vertical studs/s (40 -> ~50, 80 -> ~90, 150 -> ~150)
+		local vy = 30 + jp * 0.85
+		vy = math.clamp(vy, 45, 220)
 		local v = r.AssemblyLinearVelocity
 		r.AssemblyLinearVelocity = Vector3.new(v.X, vy, v.Z)
-		pcall(function() h:ChangeState(Enum.HumanoidStateType.Jumping) end)
+		pcall(function()
+			h.UseJumpPower = true
+			h.JumpPower = math.clamp(jp, 50, 200)
+			h:ChangeState(Enum.HumanoidStateType.Jumping)
+		end)
+	end
+
+	local function grounded()
+		local h = hum()
+		if not h then return false end
+		if h.FloorMaterial ~= Enum.Material.Air then return true end
+		local st = h:GetState()
+		return st == Enum.HumanoidStateType.Running
+			or st == Enum.HumanoidStateType.Landed
+			or st == Enum.HumanoidStateType.Climbing
+			or st == Enum.HumanoidStateType.RunningNoPhysics
 	end
 
 	local function onJump()
+		if not (H.JumpPower or H.DoubleJump or H.InfJump) then return end
 		local now = tick()
-		if now - lastJump < 0.11 then return end
+		if now - lastJump < 0.1 then return end
 		local h = hum()
 		if not h or h.Health <= 0 then return end
-		local st = h:GetState()
-		local grounded = h.FloorMaterial ~= Enum.Material.Air
-			or st == Enum.HumanoidStateType.Running
-			or st == Enum.HumanoidStateType.Landed
 
 		if H.InfJump then
 			lastJump = now
 			boostJump()
 			return
 		end
-		if grounded then
+
+		if grounded() then
 			jumpsLeft = H.DoubleJump and 1 or 0
-			if H.JumpPower or H.DoubleJump then
-				lastJump = now
-				boostJump()
-			end
+			lastJump = now
+			boostJump()
 			return
 		end
+
 		if H.DoubleJump and jumpsLeft > 0 then
 			jumpsLeft = jumpsLeft - 1
 			lastJump = now
@@ -4185,10 +4293,7 @@ task.spawn(function()
 		end
 	end
 
-	pcall(function()
-		UIS.JumpRequest:Connect(onJump)
-	end)
-	-- also Space / gamepad
+	pcall(function() UIS.JumpRequest:Connect(onJump) end)
 	UIS.InputBegan:Connect(function(inp, gp)
 		if gp then return end
 		if inp.KeyCode == Enum.KeyCode.Space or inp.KeyCode == Enum.KeyCode.ButtonA then
@@ -4197,58 +4302,58 @@ task.spawn(function()
 	end)
 
 	RunService.Heartbeat:Connect(function()
-		if H.InfJump and (UIS:IsKeyDown(Enum.KeyCode.Space) or UIS:IsKeyDown(Enum.KeyCode.ButtonA)) then
-			if tick() - lastJump > 0.16 then
+		if H.InfJump then
+			local held = UIS:IsKeyDown(Enum.KeyCode.Space) or UIS:IsKeyDown(Enum.KeyCode.ButtonA)
+			if held and tick() - lastJump > 0.15 then
 				lastJump = tick()
 				boostJump()
 			end
 		end
 		local h = hum()
-		if not h then return end
-		if H.JumpPower then
-			local jp = tonumber(H.JumpPowerValue) or 50
+		if h and H.JumpPower then
+			local jp = tonumber(H.JumpPowerValue) or 80
 			pcall(function()
 				h.UseJumpPower = true
-				h.JumpPower = jp
-				h.JumpHeight = math.clamp(jp / 7.2, 2, 60)
+				h.JumpPower = math.clamp(jp, 50, 200)
 			end)
 		end
-		if H.WalkSpeed then
+		if h and H.WalkSpeed then
 			pcall(function() h.WalkSpeed = H.WalkSpeedValue or 45 end)
 		end
-	end)
-
-	-- ===== Third person force =====
-	local wasTP = false
-	RunService.RenderStepped:Connect(function()
-		if not H.ThirdPerson then
-			if wasTP then
-				pcall(function()
-					LP.CameraMode = Enum.CameraMode.LockFirstPerson
-					local h = hum()
-					if h then h.CameraOffset = Vector3.zero end
-				end)
-				wasTP = false
-			end
-			return
-		end
-		wasTP = true
+		-- sync from S if present
 		pcall(function()
-			LP.CameraMode = Enum.CameraMode.Classic
-			LP.CameraMinZoomDistance = 2
-			LP.CameraMaxZoomDistance = 40
-			local cam = Workspace.CurrentCamera
-			if cam then
-				cam.CameraType = Enum.CameraType.Custom
-				local h = hum()
-				if h then
-					cam.CameraSubject = h
-					h.CameraOffset = Vector3.new(1.5, 1.2, 0)
+			if type(S) == "table" then
+				for _, k in ipairs({"JumpPower","JumpPowerValue","DoubleJump","InfJump","ThirdPerson","WalkSpeed","WalkSpeedValue","DeviceSpoof","DeviceName","RageBot","RageMulti"}) do
+					if S[k] ~= nil then H[k] = S[k] end
 				end
 			end
-			if LP.Character then
-				for _, p in ipairs(LP.Character:GetChildren()) do
-					if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+		end)
+	end)
+
+	-- Third person: classic zoom, fight FP lock every frame
+	local tpConn = nil
+	RunService.RenderStepped:Connect(function()
+		if not H.ThirdPerson then return end
+		pcall(function()
+			LP.CameraMode = Enum.CameraMode.Classic
+			LP.CameraMaxZoomDistance = 64
+			LP.CameraMinZoomDistance = 0.5
+			-- force zoom out if still glued
+			if LP.CameraMinZoomDistance == LP.CameraMaxZoomDistance then
+				LP.CameraMinZoomDistance = 0.5
+				LP.CameraMaxZoomDistance = 64
+			end
+			local cam = Workspace.CurrentCamera
+			local h = hum()
+			if cam and h then
+				cam.CameraType = Enum.CameraType.Custom
+				cam.CameraSubject = h
+				h.CameraOffset = Vector3.new(2, 1.5, 0)
+			end
+			local ch = LP.Character
+			if ch then
+				for _, p in ipairs(ch:GetDescendants()) do
+					if p:IsA("BasePart") then
 						p.LocalTransparencyModifier = 0
 					end
 				end
@@ -4256,56 +4361,30 @@ task.spawn(function()
 		end)
 	end)
 
-	-- ===== Device spoof loop =====
-	local function fireDevice()
-		if not H.DeviceSpoof then return end
-		local map = { PC = "MouseKeyboard", Mobile = "Touch", Console = "Gamepad", VR = "VR",
-			DESKTOP = "MouseKeyboard", MOBILE = "Touch", CONSOLE = "Gamepad" }
-		local code = map[H.DeviceName] or "MouseKeyboard"
-		pcall(function()
-			local rem = game:GetService("ReplicatedStorage")
-			rem = rem:FindFirstChild("Remotes")
-			rem = rem and rem:FindFirstChild("Replication")
-			rem = rem and rem:FindFirstChild("Fighter")
-			rem = rem and rem:FindFirstChild("SetControls")
-			if rem then rem:FireServer(code) end
-		end)
-	end
+	-- Device
 	task.spawn(function()
 		while true do
-			task.wait(8)
-			fireDevice()
+			task.wait(6)
+			if H.DeviceSpoof then
+				local map = {
+					PC = "MouseKeyboard", Mobile = "Touch", Console = "Gamepad", VR = "VR",
+					DESKTOP = "MouseKeyboard", MOBILE = "Touch", CONSOLE = "Gamepad",
+				}
+				local code = map[H.DeviceName] or "MouseKeyboard"
+				pcall(function()
+					local r = game:GetService("ReplicatedStorage")
+					r = r:FindFirstChild("Remotes") and r.Remotes:FindFirstChild("Replication")
+					r = r and r:FindFirstChild("Fighter") and r.Fighter:FindFirstChild("SetControls")
+					if r then r:FireServer(code) end
+				end)
+			end
 		end
 	end)
 
-	-- bridge Linoria toggles -> HUB if library exists
-	pcall(function()
-		local Library = rawget(getfenv() or {}, "Library")
-	end)
-	-- poll common toggle names from getgenv
-	task.spawn(function()
-		while true do
-			task.wait(0.5)
-			pcall(function()
-				-- keep H in sync if S table exists
-				if type(S) == "table" then
-					for _, k in ipairs({
-						"JumpPower","JumpPowerValue","DoubleJump","InfJump","ThirdPerson",
-						"WalkSpeed","WalkSpeedValue","ForceHead","HeadPriority","ActivationChance",
-						"NotReloading","ScopedOnly","WithinFOV","SilentManipulate",
-						"SilentAim","Triggerbot","WallCheck","AimFOV","DeviceSpoof","DeviceName",
-					}) do
-						if S[k] ~= nil then H[k] = S[k] end
-					end
-				end
-			end)
-		end
-	end)
-
+	print("[CuteGirl] recovery v2 jump/tp/rage-immune-strip")
 	pcall(function()
 		if Library and Library.Notify then
-			Library:Notify("Movement recovery loaded (Jump/TP/Device)", 3)
+			Library:Notify("Jump/TP recovery v2 loaded", 3)
 		end
 	end)
-	print("[CuteGirl] hard recovery movement loaded")
 end)
