@@ -1001,27 +1001,130 @@ task.spawn(function()
 
 		
 
--- Kicia-style Jump Power + Third Person
+-- Jump Power + Third Person (real camera unlock)
 task.spawn(function()
 	local RunService = game:GetService("RunService")
 	local Players = game:GetService("Players")
 	local LP = Players.LocalPlayer
-	RunService.Heartbeat:Connect(function()
+	local saved = {
+		mode = nil,
+		minZ = nil,
+		maxZ = nil,
+		offset = nil,
+	}
+	local wasTP = false
+
+	local function setCharacterVisible(on)
+		local char = LP.Character
+		if not char then return end
+		for _, p in ipairs(char:GetDescendants()) do
+			if p:IsA("BasePart") or p:IsA("Decal") or p:IsA("Texture") then
+				pcall(function()
+					if on then
+						if p:IsA("BasePart") then
+							p.LocalTransparencyModifier = 0
+						end
+					end
+				end)
+			end
+		end
+	end
+
+	local function enableThirdPerson()
 		pcall(function()
+			if saved.mode == nil then
+				saved.mode = LP.CameraMode
+				saved.minZ = LP.CameraMinZoomDistance
+				saved.maxZ = LP.CameraMaxZoomDistance
+			end
+			LP.CameraMode = Enum.CameraMode.Classic
+			LP.CameraMinZoomDistance = 3
+			LP.CameraMaxZoomDistance = 32
+			local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+			if hum then
+				if saved.offset == nil then saved.offset = hum.CameraOffset end
+				hum.CameraOffset = Vector3.new(1.2, 1.0, 0) -- over-shoulder
+			end
+			local cam = workspace.CurrentCamera
+			if cam then
+				cam.CameraType = Enum.CameraType.Custom
+				if LP.Character and LP.Character:FindFirstChild("Humanoid") then
+					cam.CameraSubject = LP.Character.Humanoid
+				end
+			end
+			setCharacterVisible(true)
+		end)
+	end
+
+	local function disableThirdPerson()
+		pcall(function()
+			if saved.mode ~= nil then
+				LP.CameraMode = saved.mode
+			else
+				LP.CameraMode = Enum.CameraMode.LockFirstPerson
+			end
+			if saved.minZ ~= nil then LP.CameraMinZoomDistance = saved.minZ end
+			if saved.maxZ ~= nil then LP.CameraMaxZoomDistance = saved.maxZ end
+			local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+			if hum then
+				hum.CameraOffset = saved.offset or Vector3.zero
+			end
+			saved.mode, saved.minZ, saved.maxZ, saved.offset = nil, nil, nil, nil
+		end)
+	end
+
+	RunService.RenderStepped:Connect(function()
+		pcall(function()
+			local h = _G.HUB or S
 			local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
 			if not hum then return end
-			if S.JumpPower then
-				hum.JumpPower = S.JumpPowerValue or 50
+
+			if h.JumpPower then
 				hum.UseJumpPower = true
+				hum.JumpPower = h.JumpPowerValue or 50
+				pcall(function() hum.JumpHeight = (h.JumpPowerValue or 50) / 7.2 end)
 			end
-			if S.ThirdPerson then
-				hum.CameraOffset = Vector3.new(0, 1.5, 8)
-			else
-				if hum.CameraOffset.Magnitude > 0.5 then
-					hum.CameraOffset = Vector3.zero
+
+			local want = h.ThirdPerson == true
+			if want and not wasTP then
+				enableThirdPerson()
+				wasTP = true
+			elseif (not want) and wasTP then
+				disableThirdPerson()
+				wasTP = false
+			end
+
+			if want then
+				-- fight game scripts forcing FP every frame
+				LP.CameraMode = Enum.CameraMode.Classic
+				if LP.CameraMaxZoomDistance < 8 then
+					LP.CameraMaxZoomDistance = 32
+				end
+				if LP.CameraMinZoomDistance > 3 then
+					LP.CameraMinZoomDistance = 3
+				end
+				local cam = workspace.CurrentCamera
+				if cam and cam.CameraType ~= Enum.CameraType.Custom and cam.CameraType ~= Enum.CameraType.Scriptable then
+					cam.CameraType = Enum.CameraType.Custom
+				end
+				hum.CameraOffset = Vector3.new(1.2, 1.0, 0)
+				-- keep local character visible
+				for _, p in ipairs(LP.Character:GetChildren()) do
+					if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+						p.LocalTransparencyModifier = 0
+					end
 				end
 			end
 		end)
+	end)
+
+	LP.CharacterAdded:Connect(function()
+		wasTP = false
+		task.wait(0.6)
+		if (_G.HUB or S).ThirdPerson then
+			enableThirdPerson()
+			wasTP = true
+		end
 	end)
 end)
 
@@ -1087,6 +1190,27 @@ do
 		if S[k] == nil then S[k] = v end
 	end
 end
+-- always read live settings from _G.HUB (UI writes here)
+local function H()
+	return _G.HUB or S
+end
+local function silentOpts()
+	local h = H()
+	return {
+		on = h.SilentAim == true,
+		trig = h.Triggerbot == true,
+		forceHead = h.ForceHead ~= false,
+		headPct = tonumber(h.HeadPriority) or 100,
+		chance = tonumber(h.ActivationChance) or 100,
+		notReload = h.NotReloading ~= false,
+		scopedOnly = h.ScopedOnly == true,
+		withinFov = h.WithinFOV ~= false,
+		manipulate = h.SilentManipulate ~= false,
+		wall = h.WallCheck ~= false,
+		fov = tonumber(h.AimFOV) or 400,
+		trigFov = tonumber(h.TrigFOV) or 120,
+	}
+end
 
 -- Combat UI
 do
@@ -1099,15 +1223,16 @@ do
 	GunBox:AddSlider("AimSmooth", { Text = "Aim Smooth", Default = 0.35, Min = 0.15, Max = 0.7, Rounding = 2, Callback = function(v) S.AimSmooth = v end })
 	GunBox:AddToggle("TeamCheck", { Text = "Team Check", Default = true, Callback = function(v) S.TeamCheck = v end })
 	GunBox:AddToggle("WallCheck", { Text = "Wall Check", Default = true, Callback = function(v) S.WallCheck = v end })
-	GunBox:AddToggle("ForceHead", { Text = "Force Head", Default = true, Callback = function(v) S.ForceHead = v end })
-	GunBox:AddSlider("HeadPriority", { Text = "Head Priority %", Default = 100, Min = 0, Max = 100, Rounding = 0, Callback = function(v) S.HeadPriority = v end })
-	GunBox:AddSlider("ActivationChance", { Text = "Activation %", Default = 100, Min = 1, Max = 100, Rounding = 0, Callback = function(v) S.ActivationChance = v end })
-	GunBox:AddToggle("NotReloading", { Text = "Not Reloading", Default = true, Callback = function(v) S.NotReloading = v end })
-	GunBox:AddToggle("ScopedOnly", { Text = "Scoped Only", Default = false, Callback = function(v) S.ScopedOnly = v end })
-	GunBox:AddToggle("WithinFOV", { Text = "Within FOV Only", Default = true, Callback = function(v) S.WithinFOV = v end })
-	GunBox:AddToggle("SilentManipulate", { Text = "Silent Manipulate", Default = true, Callback = function(v) S.SilentManipulate = v end })
+	GunBox:AddToggle("ForceHead", { Text = "Force Head", Default = true, Callback = function(v) S.ForceHead = v; _G.HUB.ForceHead = v end })
+	GunBox:AddSlider("HeadPriority", { Text = "Head Priority %", Default = 100, Min = 0, Max = 100, Rounding = 0, Callback = function(v) S.HeadPriority = v; _G.HUB.HeadPriority = v end })
+	GunBox:AddSlider("ActivationChance", { Text = "Activation %", Default = 100, Min = 1, Max = 100, Rounding = 0, Callback = function(v) S.ActivationChance = v; _G.HUB.ActivationChance = v end })
+	GunBox:AddToggle("NotReloading", { Text = "Not Reloading", Default = true, Callback = function(v) S.NotReloading = v; _G.HUB.NotReloading = v end })
+	GunBox:AddToggle("ScopedOnly", { Text = "Scoped Only", Default = false, Callback = function(v) S.ScopedOnly = v; _G.HUB.ScopedOnly = v end })
+	GunBox:AddToggle("WithinFOV", { Text = "Within FOV Only", Default = true, Callback = function(v) S.WithinFOV = v; _G.HUB.WithinFOV = v end })
+	GunBox:AddToggle("SilentManipulate", { Text = "Silent Manipulate", Default = true, Callback = function(v) S.SilentManipulate = v; _G.HUB.SilentManipulate = v end })
 	local FireBox = Tabs.Combat:AddRightGroupbox("Weapon")
 	FireBox:AddToggle("NoCooldown", { Text = "Rapid Fire", Default = false, Callback = function(v) S.RapidFire = v end })
+	FireBox:AddToggle("AutoPickup", { Text = "Auto Pickup Ammo/HP", Default = false, Callback = function(v) S.AutoPickup = v end })
 	FireBox:AddToggle("NoSpread", { Text = "No Spread", Default = false, Callback = function(v) S.NoSpread = v end })
 	FireBox:AddToggle("NoRecoil", { Text = "No Recoil", Default = false, Callback = function(v) S.NoRecoil = v end })
 	FireBox:AddToggle("HitNotify", { Text = "Hit Notify", Default = false, Callback = function(v) S.HitNotify = v end })
@@ -1150,7 +1275,7 @@ do
 	MoveBox:AddToggle("Freecam", { Text = "Freecam", Default = false, Callback = function(v) S.Freecam = v end })
 	MoveBox:AddToggle("JumpPower", { Text = "Jump Power", Default = false, Callback = function(v) S.JumpPower = v end })
 	MoveBox:AddSlider("JumpPowerValue", { Text = "Jump Value", Default = 50, Min = 20, Max = 200, Rounding = 0, Callback = function(v) S.JumpPowerValue = v end })
-	MoveBox:AddToggle("ThirdPerson", { Text = "Third Person", Default = false, Callback = function(v) S.ThirdPerson = v end })
+	MoveBox:AddToggle("ThirdPerson", { Text = "Third Person", Default = false, Callback = function(v) S.ThirdPerson = v; _G.HUB.ThirdPerson = v; if Library and Library.Notify then Library:Notify(v and "Third Person ON" or "Third Person OFF", 2) end end })
 end
 
 
@@ -1398,6 +1523,43 @@ Controls.platformDropdown = SpoofGroup:AddDropdown("PlatformDropdown", {
     Callback = function()
         UpdateConfig()
         if Controls.platformToggle.Value then ApplySpoofs() end
+        -- also drive in-game SetControls device spoof
+        local map = { DESKTOP = "PC", MOBILE = "Mobile", CONSOLE = "Console", VR = "VR" }
+        local v = Controls.platformDropdown.Value or Config.platform
+        S.DeviceName = map[v] or "PC"
+        if S.DeviceSpoof and applyDeviceSpoof then
+            pcall(function() applyDeviceSpoof(true) end)
+        end
+    end
+})
+
+SpoofGroup:AddDivider()
+SpoofGroup:AddToggle("DeviceSpoofToggle", {
+    Text = "Device Spoof (Controls)",
+    Default = false,
+    Callback = function(v)
+        S.DeviceSpoof = v
+        if v then
+            local map = { DESKTOP = "PC", MOBILE = "Mobile", CONSOLE = "Console", VR = "VR" }
+            local pv = (Controls.platformDropdown and Controls.platformDropdown.Value) or Config.platform or "DESKTOP"
+            S.DeviceName = map[pv] or "PC"
+            pcall(function() if applyDeviceSpoof then applyDeviceSpoof(true) end end)
+            Library:Notify("Device Spoof ON: " .. tostring(S.DeviceName), 2)
+        else
+            pcall(function() if restoreRealDevice then restoreRealDevice() end end)
+            Library:Notify("Device Spoof OFF", 2)
+        end
+    end
+})
+SpoofGroup:AddDropdown("DeviceNameDrop", {
+    Values = { "PC", "Mobile", "Console", "VR" },
+    Default = 1,
+    Text = "Device Type",
+    Callback = function(v)
+        S.DeviceName = v
+        if S.DeviceSpoof then
+            pcall(function() if applyDeviceSpoof then applyDeviceSpoof(true) end end)
+        end
     end
 })
 
@@ -2446,55 +2608,68 @@ task.spawn(function()
 			return a, b, c, d, e
 		end
 
-		-- Kicia-style activation filters
-		if S.ActivationChance and S.ActivationChance < 100 then
-			if math.random(1, 100) > S.ActivationChance then
-				return a, b, c, d, e
-			end
+		local opt = silentOpts()
+		if not opt.on and not opt.trig then
+			return a, b, c, d, e
 		end
-		if S.NotReloading then
+		-- Activation %
+		if opt.chance < 100 and math.random(1, 100) > opt.chance then
+			return a, b, c, d, e
+		end
+		-- Not Reloading
+		if opt.notReload then
 			local reloading = false
 			pcall(function()
 				local item = self.ClientFighter and self.ClientFighter.EquippedItem
 				if item then
-					reloading = item:Get("Reloading") or item:Get("IsReloading") or false
+					local a1 = item:Get("Reloading")
+					local a2 = item:Get("IsReloading")
+					local a3 = item:Get("ReloadProgress")
+					reloading = (a1 == true) or (a2 == true) or (type(a3) == "number" and a3 > 0)
 				end
 			end)
 			if reloading then return a, b, c, d, e end
 		end
-		if S.ScopedOnly then
+		-- Scoped Only
+		if opt.scopedOnly then
 			local scoped = false
 			pcall(function()
 				local item = self.ClientFighter and self.ClientFighter.EquippedItem
 				if item then
-					scoped = item:Get("IsScoped") or item:Get("Scoped") or item:Get("ADS") or false
+					scoped = item:Get("IsScoped") or item:Get("Scoped") or item:Get("ADS")
+						or item:Get("Aiming") or item:Get("IsAiming") or false
 				end
+				-- camera FOV drop often means scoped
+				local cam = Workspace.CurrentCamera
+				if cam and cam.FieldOfView < 50 then scoped = true end
 			end)
 			if not scoped then return a, b, c, d, e end
 		end
 
 		local head
-		if S.SilentAim then
-			local ignoreWall = not S.WallCheck
-			local fov = (S.WithinFOV and (S.AimFOV or 400)) or 9999
+		if opt.on then
+			local ignoreWall = not opt.wall
+			local fov = opt.withinFov and opt.fov or 9999
 			head = getCrosshair(fov)
 			if not head then head = getTarget(ignoreWall, fov) end
 			if not head then head = getNearest(ignoreWall) end
-		elseif S.Triggerbot then
-			head = getCrosshair(S.TrigFOV or 120)
+		elseif opt.trig then
+			head = getCrosshair(opt.trigFov)
 		end
-		-- Force Head (Kicia Head %)
-		if S.ForceHead or (S.HeadPriority and S.HeadPriority >= 50) then
-			head = forceHeadPart(head)
-		elseif head and math.random(1, 100) <= (S.HeadPriority or 100) then
-			head = forceHeadPart(head)
+		-- Force Head / Head Priority %
+		if head then
+			if opt.forceHead or opt.headPct >= 100 then
+				head = forceHeadPart(head)
+			elseif opt.headPct > 0 and math.random(1, 100) <= opt.headPct then
+				head = forceHeadPart(head)
+			end
+			-- if force head failed, keep original part
 		end
 
-		-- STRICT wall check for silent (unless silent manipulate + no wall check)
 		if not head then
 			return a, b, c, d, e
 		end
-		if S.WallCheck and not canSilentTarget(head) then
+		if opt.wall and not canSilentTarget(head) then
 			return a, b, c, d, e
 		end
 
@@ -2522,7 +2697,7 @@ task.spawn(function()
 			end)
 			d = true
 			-- extra remote burst for reliability (silent only)
-			if S.SilentAim and S.SilentManipulate ~= false then
+			if H().SilentAim and H().SilentManipulate ~= false then
 				task.defer(function()
 					pcall(function()
 						refreshMods()
@@ -2589,7 +2764,8 @@ end)
 
 local lastSilent = 0
 RunService.Heartbeat:Connect(function()
-	if not S.SilentAim then return end
+	local opt = silentOpts()
+	if not opt.on then return end
 	local holding = false
 	pcall(function()
 		holding = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
@@ -2597,16 +2773,43 @@ RunService.Heartbeat:Connect(function()
 	end)
 	if not holding then return end
 	if tick() - lastSilent < 0.03 then return end
+	if opt.chance < 100 and math.random(1, 100) > opt.chance then return end
+	if opt.notReload then
+		local reloading = false
+		pcall(function()
+			local lf = getFighter and getFighter()
+			local item = lf and lf.EquippedItem
+			if item then
+				reloading = item:Get("Reloading") or item:Get("IsReloading") or false
+			end
+		end)
+		if reloading then return end
+	end
+	if opt.scopedOnly then
+		local scoped = false
+		pcall(function()
+			local lf = getFighter and getFighter()
+			local item = lf and lf.EquippedItem
+			if item then
+				scoped = item:Get("IsScoped") or item:Get("Scoped") or item:Get("ADS") or false
+			end
+			local cam = Workspace.CurrentCamera
+			if cam and cam.FieldOfView < 50 then scoped = true end
+		end)
+		if not scoped then return end
+	end
 
-	local ignoreWall = not S.WallCheck
-	local fov = (S.WithinFOV and (S.AimFOV or 450)) or 9999
+	local ignoreWall = not opt.wall
+	local fov = opt.withinFov and opt.fov or 9999
 	local head = getCrosshair(fov)
 	if not head then head = getTarget(ignoreWall, fov) end
 	if not head then head = getNearest(ignoreWall) end
-	if S.ForceHead ~= false then head = forceHeadPart(head) end
+	if head and (opt.forceHead or opt.headPct >= 100 or math.random(1, 100) <= opt.headPct) then
+		head = forceHeadPart(head)
+	end
 
 	if not head then return end
-	if S.WallCheck and not canSilentTarget(head) then return end
+	if opt.wall and not canSilentTarget(head) then return end
 
 	refreshMods()
 	if not (Utility and EnumLibrary and UseItem) then return end
@@ -3718,6 +3921,47 @@ function doServerHop()
 		TeleportService:Teleport(placeId, LP)
 	end)
 end
+
+
+-- Auto pickup ammo / health orbs
+S.AutoPickup = S.AutoPickup or false
+task.spawn(function()
+	local ft = firetouchinterest
+	while true do
+		task.wait(0.35)
+		if S.AutoPickup then
+			local char = LP.Character
+			local root = char and char:FindFirstChild("HumanoidRootPart")
+			if root then
+				for _, obj in ipairs(Workspace:GetDescendants()) do
+					local n = string.lower(obj.Name)
+					if obj:IsA("BasePart") then
+						local isPick = string.find(n, "ammo") or string.find(n, "bullet") or string.find(n, "health")
+							or string.find(n, "heal") or string.find(n, "med") or string.find(n, "pickup")
+							or string.find(n, "orb") or string.find(n, "pack") or string.find(n, "loot")
+						if isPick and (obj.Position - root.Position).Magnitude < 45 then
+							if ft then
+								pcall(function() ft(obj, root, 0) ft(obj, root, 1) end)
+							end
+							local pp = obj:FindFirstChildOfClass("ProximityPrompt")
+							if pp and fireproximityprompt then
+								pcall(function() fireproximityprompt(pp) end)
+							end
+						end
+					elseif obj:IsA("ProximityPrompt") then
+						local pn = string.lower(obj.Name .. tostring(obj.Parent and obj.Parent.Name or ""))
+						if string.find(pn, "ammo") or string.find(pn, "heal") or string.find(pn, "health") or string.find(pn, "pickup") then
+							local part = obj.Parent
+							if part and part:IsA("BasePart") and (part.Position - root.Position).Magnitude < 45 then
+								if fireproximityprompt then pcall(function() fireproximityprompt(obj) end) end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+end)
 
 print("[hub] combat features loaded")
 
