@@ -4239,20 +4239,15 @@ task.spawn(function()
 
 	-- Jump: default value 80 feels like a real boost; slider 40-250
 	local jumpsLeft, lastJump = 0, 0
-	local function boostJump()
+	-- mild vertical set (does NOT stack with gravity spam)
+	local function setUpVelocity(amount)
 		local r, h = root(), hum()
 		if not r or not h then return end
-		local jp = tonumber(H.JumpPowerValue) or 80
-		-- map slider to vertical studs/s (40 -> ~50, 80 -> ~90, 150 -> ~150)
-		local vy = 30 + jp * 0.85
-		vy = math.clamp(vy, 45, 220)
 		local v = r.AssemblyLinearVelocity
+		-- replace Y only; cap so it never rockets
+		local vy = math.clamp(amount, 35, 95)
 		r.AssemblyLinearVelocity = Vector3.new(v.X, vy, v.Z)
-		pcall(function()
-			h.UseJumpPower = true
-			h.JumpPower = math.clamp(jp, 50, 200)
-			h:ChangeState(Enum.HumanoidStateType.Jumping)
-		end)
+		pcall(function() h:ChangeState(Enum.HumanoidStateType.Jumping) end)
 	end
 
 	local function grounded()
@@ -4266,68 +4261,95 @@ task.spawn(function()
 			or st == Enum.HumanoidStateType.RunningNoPhysics
 	end
 
-	local function onJump()
-		if not (H.JumpPower or H.DoubleJump or H.InfJump) then return end
+	local function onJumpRequest()
 		local now = tick()
-		if now - lastJump < 0.1 then return end
+		if now - lastJump < 0.18 then return end
 		local h = hum()
 		if not h or h.Health <= 0 then return end
 
-		if H.InfJump then
+		-- sync live
+		pcall(function()
+			if type(S) == "table" then
+				H.JumpPower = S.JumpPower
+				H.JumpPowerValue = S.JumpPowerValue
+				H.DoubleJump = S.DoubleJump
+				H.InfJump = S.InfJump
+			end
+		end)
+
+		local onGround = grounded()
+
+		-- Infinite jump: only while AIRBORNE, moderate height, slower cadence
+		if H.InfJump and not onGround then
 			lastJump = now
-			boostJump()
+			setUpVelocity(58)
 			return
 		end
 
-		if grounded() then
-			jumpsLeft = H.DoubleJump and 1 or 0
+		-- Ground jump
+		if onGround then
+			jumpsLeft = (H.DoubleJump and 1) or 0
 			lastJump = now
-			boostJump()
+			if H.JumpPower then
+				-- slider 40-250 -> ~45-90 up (normal boosted jump, not insane)
+				local jp = tonumber(H.JumpPowerValue) or 80
+				local vy = 40 + (jp - 40) * 0.25
+				setUpVelocity(vy)
+			end
+			-- if no JumpPower, leave default roblox jump alone
 			return
 		end
 
-		if H.DoubleJump and jumpsLeft > 0 then
+		-- Double jump: only second hop in air
+		if H.DoubleJump and jumpsLeft > 0 and not onGround then
 			jumpsLeft = jumpsLeft - 1
 			lastJump = now
-			boostJump()
+			setUpVelocity(55) -- fixed mild double jump
+			return
 		end
 	end
 
-	pcall(function() UIS.JumpRequest:Connect(onJump) end)
-	UIS.InputBegan:Connect(function(inp, gp)
-		if gp then return end
-		if inp.KeyCode == Enum.KeyCode.Space or inp.KeyCode == Enum.KeyCode.ButtonA then
-			onJump()
-		end
+	-- ONLY JumpRequest (avoid Space InputBegan double-fire)
+	pcall(function()
+		UIS.JumpRequest:Connect(onJumpRequest)
 	end)
 
+	-- reset air jumps on land
 	RunService.Heartbeat:Connect(function()
-		if H.InfJump then
-			local held = UIS:IsKeyDown(Enum.KeyCode.Space) or UIS:IsKeyDown(Enum.KeyCode.ButtonA)
-			if held and tick() - lastJump > 0.15 then
-				lastJump = tick()
-				boostJump()
-			end
-		end
-		local h = hum()
-		if h and H.JumpPower then
-			local jp = tonumber(H.JumpPowerValue) or 80
-			pcall(function()
-				h.UseJumpPower = true
-				h.JumpPower = math.clamp(jp, 50, 200)
-			end)
-		end
-		if h and H.WalkSpeed then
-			pcall(function() h.WalkSpeed = H.WalkSpeedValue or 45 end)
-		end
-		-- sync from S if present
 		pcall(function()
 			if type(S) == "table" then
-				for _, k in ipairs({"JumpPower","JumpPowerValue","DoubleJump","InfJump","ThirdPerson","WalkSpeed","WalkSpeedValue","DeviceSpoof","DeviceName","RageBot","RageMulti"}) do
+				for _, k in ipairs({"JumpPower","JumpPowerValue","DoubleJump","InfJump","ThirdPerson","WalkSpeed","WalkSpeedValue"}) do
 					if S[k] ~= nil then H[k] = S[k] end
 				end
 			end
 		end)
+		local h = hum()
+		if not h then return end
+		if grounded() and jumpsLeft ~= ((H.DoubleJump and 1) or 0) then
+			-- only reset when landing tracked via floor
+			if h.FloorMaterial ~= Enum.Material.Air then
+				jumpsLeft = H.DoubleJump and 1 or 0
+			end
+		end
+		-- JumpPower property (soft) — game may ignore; velocity handles real boost
+		if H.JumpPower then
+			local jp = tonumber(H.JumpPowerValue) or 80
+			pcall(function()
+				h.UseJumpPower = true
+				h.JumpPower = math.clamp(50 + (jp - 40) * 0.35, 50, 90)
+			end)
+		end
+		if H.WalkSpeed then
+			pcall(function() h.WalkSpeed = H.WalkSpeedValue or 45 end)
+		end
+		-- Inf jump hold assist (air only, slower)
+		if H.InfJump and not grounded() then
+			local held = UIS:IsKeyDown(Enum.KeyCode.Space) or UIS:IsKeyDown(Enum.KeyCode.ButtonA)
+			if held and tick() - lastJump > 0.28 then
+				lastJump = tick()
+				setUpVelocity(55)
+			end
+		end
 	end)
 
 	-- Third person: classic zoom, fight FP lock every frame
