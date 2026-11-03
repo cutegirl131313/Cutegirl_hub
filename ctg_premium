@@ -1,3 +1,212 @@
+-- ============================================================
+-- KEY SYSTEM (10 one-time keys, unlock persists per UserId)
+-- ============================================================
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local LP = Players.LocalPlayer
+
+local VALID_KEYS = {
+	["CG-UWWT-BZ0C-D1HM-CNO3"] = true,
+	["CG-G93Y-SKVW-MXV7-DQTM"] = true,
+	["CG-1NWY-JZZV-M4JO-U98D"] = true,
+	["CG-VZH1-JED8-KX65-7V67"] = true,
+	["CG-WI9T-RLIE-0MBH-PMZP"] = true,
+	["CG-8TYY-UJQG-60DA-QL59"] = true,
+	["CG-K3L0-YOG4-ARC4-EBAH"] = true,
+	["CG-JFPS-1EFB-GVDS-3QYK"] = true,
+	["CG-J7MX-HYPP-X34K-6CCR"] = true,
+	["CG-BQMW-U0J2-5TXU-WDIM"] = true
+}
+
+local AUTH_FILE = "CuteGirlHub/auth.json"
+local USED_FILE = "CuteGirlHub/used_keys.json"
+
+local function ensureFolder()
+	pcall(function()
+		if makefolder then makefolder("CuteGirlHub") end
+	end)
+end
+
+local function readJSON(path)
+	local ok, data = pcall(function()
+		if isfile and isfile(path) and readfile then
+			return HttpService:JSONDecode(readfile(path))
+		end
+		return nil
+	end)
+	return ok and data or nil
+end
+
+local function writeJSON(path, tbl)
+	pcall(function()
+		ensureFolder()
+		if writefile then
+			writefile(path, HttpService:JSONEncode(tbl))
+		end
+	end)
+end
+
+local function loadUsedKeys()
+	local data = readJSON(USED_FILE)
+	if type(data) ~= "table" then return {} end
+	return data
+end
+
+local function saveUsedKeys(used)
+	writeJSON(USED_FILE, used)
+end
+
+local function isAlreadyUnlocked()
+	local data = readJSON(AUTH_FILE)
+	if type(data) ~= "table" then return false end
+	if data.uid == LP.UserId and data.unlocked == true then
+		return true
+	end
+	return false
+end
+
+local function markUnlocked(key)
+	writeJSON(AUTH_FILE, {
+		uid = LP.UserId,
+		unlocked = true,
+		key = key,
+		time = os.time(),
+	})
+end
+
+local function tryRedeem(key)
+	key = tostring(key or ""):gsub("%s+", ""):upper()
+	if key == "" then
+		return false, "Enter a key"
+	end
+	if not VALID_KEYS[key] then
+		return false, "Invalid key"
+	end
+	local used = loadUsedKeys()
+	-- already unlocked this account with any key -> allow
+	if isAlreadyUnlocked() then
+		return true, "Already unlocked"
+	end
+	-- key used by someone else on this executor storage
+	if used[key] and used[key] ~= LP.UserId then
+		return false, "Key already used"
+	end
+	-- key used by this user before -> keep access
+	if used[key] == LP.UserId then
+		markUnlocked(key)
+		return true, "Welcome back"
+	end
+	-- first use
+	used[key] = LP.UserId
+	saveUsedKeys(used)
+	markUnlocked(key)
+	return true, "Key accepted"
+end
+
+-- block rest of script until unlocked
+if not isAlreadyUnlocked() then
+	local unlocked = false
+	local CoreGui = game:GetService("CoreGui")
+	local sg = Instance.new("ScreenGui")
+	sg.Name = "CuteGirlKeyGate"
+	sg.ResetOnSpawn = false
+	sg.IgnoreGuiInset = true
+	sg.DisplayOrder = 1e9
+	pcall(function() sg.Parent = CoreGui end)
+	if not sg.Parent then sg.Parent = LP:WaitForChild("PlayerGui") end
+
+	local frame = Instance.new("Frame")
+	frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	frame.Position = UDim2.fromScale(0.5, 0.5)
+	frame.Size = UDim2.fromOffset(340, 190)
+	frame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+	frame.BorderSizePixel = 0
+	frame.Parent = sg
+	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
+	local st = Instance.new("UIStroke")
+	st.Color = Color3.fromRGB(0, 0, 0)
+	st.Thickness = 1.5
+	st.Parent = frame
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, -20, 0, 28)
+	title.Position = UDim2.fromOffset(10, 12)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 16
+	title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Text = "Cute Girl Hub — License Key"
+	title.Parent = frame
+
+	local box = Instance.new("TextBox")
+	box.Size = UDim2.new(1, -20, 0, 34)
+	box.Position = UDim2.fromOffset(10, 55)
+	box.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
+	box.TextColor3 = Color3.fromRGB(240, 240, 245)
+	box.PlaceholderText = "CG-XXXX-XXXX-XXXX-XXXX"
+	box.PlaceholderColor3 = Color3.fromRGB(120, 120, 130)
+	box.Font = Enum.Font.Code
+	box.TextSize = 14
+	box.Text = ""
+	box.ClearTextOnFocus = false
+	box.Parent = frame
+	Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
+
+	local status = Instance.new("TextLabel")
+	status.Size = UDim2.new(1, -20, 0, 20)
+	status.Position = UDim2.fromOffset(10, 98)
+	status.BackgroundTransparency = 1
+	status.Font = Enum.Font.Gotham
+	status.TextSize = 12
+	status.TextColor3 = Color3.fromRGB(180, 180, 190)
+	status.TextXAlignment = Enum.TextXAlignment.Left
+	status.Text = "Enter key to continue"
+	status.Parent = frame
+
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, -20, 0, 36)
+	btn.Position = UDim2.fromOffset(10, 130)
+	btn.BackgroundColor3 = Color3.fromRGB(140, 70, 200)
+	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 14
+	btn.Text = "Unlock"
+	btn.Parent = frame
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
+	btn.MouseButton1Click:Connect(function()
+		local ok, msg = tryRedeem(box.Text)
+		status.Text = msg
+		if ok then
+			status.TextColor3 = Color3.fromRGB(120, 255, 160)
+			unlocked = true
+			task.wait(0.35)
+			sg:Destroy()
+		else
+			status.TextColor3 = Color3.fromRGB(255, 100, 100)
+		end
+	end)
+
+	box.FocusLost:Connect(function(enter)
+		if enter then
+			btn.MouseButton1Click:Wait()
+		end
+	end)
+
+	-- yield until unlocked
+	while not unlocked do
+		task.wait(0.1)
+	end
+else
+	-- already unlocked this UserId
+	print("[CuteGirlHub] key already unlocked for this account")
+end
+
+-- ============================================================
+-- MAIN HUB (after key)
+-- ============================================================
+
 -- Cute Girl Hub (Full Fixed Script - Shooting Range & Stability Fix)
 -- Uses LinoriaLib UI library
 
