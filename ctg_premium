@@ -2054,8 +2054,8 @@ task.spawn(function()
 						end
 					end
 				end)
-				local multi = math.clamp(tonumber(S.RageMulti) or 16, 8, 30)
-				if S.RageBoost ~= false then multi = math.max(multi, 18) end
+				local multi = math.clamp(tonumber(S.RageMulti) or 24, 12, 40)
+				if S.RageBoost ~= false then multi = math.max(multi, 24) end
 				local hp = head.Position
 				local camPos = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position or hp
 				local origins = {
@@ -4217,176 +4217,142 @@ end)
 
 
 
+
 --==========================================================================
--- HARD RECOVERY v2: jump + third person (always on)
+-- HARD RECOVERY v3: Kicia-style MaxDoubleJumps + TP offset + rage strip
 --==========================================================================
 task.spawn(function()
 	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
 	local UIS = game:GetService("UserInputService")
 	local Workspace = game:GetService("Workspace")
+	local RS = game:GetService("ReplicatedStorage")
 	local LP = Players.LocalPlayer
 
 	_G.HUB = _G.HUB or {}
 	local H = _G.HUB
 
-	local function hum()
-		return LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-	end
-	local function root()
-		return LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-	end
-
-	-- Jump: default value 80 feels like a real boost; slider 40-250
-	local jumpsLeft, lastJump = 0, 0
-	-- mild vertical set (does NOT stack with gravity spam)
-	local function setUpVelocity(amount)
-		local r, h = root(), hum()
-		if not r or not h then return end
-		local v = r.AssemblyLinearVelocity
-		-- replace Y only; cap so it never rockets
-		local vy = math.clamp(amount, 35, 95)
-		r.AssemblyLinearVelocity = Vector3.new(v.X, vy, v.Z)
-		pcall(function() h:ChangeState(Enum.HumanoidStateType.Jumping) end)
-	end
-
-	local function grounded()
-		local h = hum()
-		if not h then return false end
-		if h.FloorMaterial ~= Enum.Material.Air then return true end
-		local st = h:GetState()
-		return st == Enum.HumanoidStateType.Running
-			or st == Enum.HumanoidStateType.Landed
-			or st == Enum.HumanoidStateType.Climbing
-			or st == Enum.HumanoidStateType.RunningNoPhysics
-	end
-
-	local function onJumpRequest()
-		local now = tick()
-		if now - lastJump < 0.18 then return end
-		local h = hum()
-		if not h or h.Health <= 0 then return end
-
-		-- sync live
+	local function sync()
 		pcall(function()
 			if type(S) == "table" then
-				H.JumpPower = S.JumpPower
-				H.JumpPowerValue = S.JumpPowerValue
-				H.DoubleJump = S.DoubleJump
-				H.InfJump = S.InfJump
-			end
-		end)
-
-		local onGround = grounded()
-
-		-- Infinite jump: only while AIRBORNE, moderate height, slower cadence
-		if H.InfJump and not onGround then
-			lastJump = now
-			setUpVelocity(58)
-			return
-		end
-
-		-- Ground jump
-		if onGround then
-			jumpsLeft = (H.DoubleJump and 1) or 0
-			lastJump = now
-			if H.JumpPower then
-				-- slider 40-250 -> ~45-90 up (normal boosted jump, not insane)
-				local jp = tonumber(H.JumpPowerValue) or 80
-				local vy = 40 + (jp - 40) * 0.25
-				setUpVelocity(vy)
-			end
-			-- if no JumpPower, leave default roblox jump alone
-			return
-		end
-
-		-- Double jump: only second hop in air
-		if H.DoubleJump and jumpsLeft > 0 and not onGround then
-			jumpsLeft = jumpsLeft - 1
-			lastJump = now
-			setUpVelocity(55) -- fixed mild double jump
-			return
-		end
-	end
-
-	-- ONLY JumpRequest (avoid Space InputBegan double-fire)
-	pcall(function()
-		UIS.JumpRequest:Connect(onJumpRequest)
-	end)
-
-	-- reset air jumps on land
-	RunService.Heartbeat:Connect(function()
-		pcall(function()
-			if type(S) == "table" then
-				for _, k in ipairs({"JumpPower","JumpPowerValue","DoubleJump","InfJump","ThirdPerson","WalkSpeed","WalkSpeedValue"}) do
+				for _, k in ipairs({
+					"JumpPower", "JumpPowerValue", "DoubleJump", "InfJump", "ThirdPerson",
+					"WalkSpeed", "WalkSpeedValue", "RageBot", "RageMulti", "DeviceSpoof", "DeviceName",
+				}) do
 					if S[k] ~= nil then H[k] = S[k] end
 				end
 			end
 		end)
-		local h = hum()
-		if not h then return end
-		if grounded() and jumpsLeft ~= ((H.DoubleJump and 1) or 0) then
-			-- only reset when landing tracked via floor
-			if h.FloorMaterial ~= Enum.Material.Air then
-				jumpsLeft = H.DoubleJump and 1 or 0
+	end
+
+	local FighterCtrl
+	pcall(function()
+		FighterCtrl = require(LP.PlayerScripts.Controllers.FighterController)
+	end)
+
+	local function getEquippedItem()
+		local lf = FighterCtrl and (FighterCtrl.LocalFighter or (FighterCtrl.GetFighter and FighterCtrl:GetFighter(LP)))
+		return lf and lf.EquippedItem or nil
+	end
+
+	-- Kicia InfiniteDoubleJumps = MaxDoubleJumps count huge
+	local function applyDoubleJumpModifier()
+		local item = getEquippedItem()
+		if not item then return end
+		local infinite = H.InfJump or H.DoubleJump
+		local count = infinite and 676767 or nil
+		pcall(function()
+			if item.Set then
+				if count then
+					item:Set("MaxDoubleJumps", count)
+					item:Set("DoubleJumps", count)
+					item:Set("RemainingDoubleJumps", count)
+				end
 			end
-		end
-		-- JumpPower property (soft) — game may ignore; velocity handles real boost
+		end)
+		pcall(function()
+			if item.Info then
+				if count then
+					item.Info.MaxDoubleJumps = count
+					item.Info.DoubleJumps = count
+				end
+			end
+		end)
+		pcall(function()
+			local data = item.Data or item._data
+			if type(data) == "table" and count then
+				data.MaxDoubleJumps = count
+				data.DoubleJumps = count
+			end
+		end)
+	end
+
+	-- Jump power via humanoid + item if any
+	local function applyJumpPower()
+		local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+		if not hum then return end
 		if H.JumpPower then
 			local jp = tonumber(H.JumpPowerValue) or 80
+			-- mild: 40->50, 80->62, 150->80 approx
+			local v = math.clamp(45 + (jp - 40) * 0.3, 45, 90)
 			pcall(function()
-				h.UseJumpPower = true
-				h.JumpPower = math.clamp(50 + (jp - 40) * 0.35, 50, 90)
+				hum.UseJumpPower = true
+				hum.JumpPower = v
 			end)
 		end
 		if H.WalkSpeed then
-			pcall(function() h.WalkSpeed = H.WalkSpeedValue or 45 end)
+			pcall(function() hum.WalkSpeed = H.WalkSpeedValue or 45 end)
 		end
-		-- Inf jump hold assist (air only, slower)
-		if H.InfJump and not grounded() then
-			local held = UIS:IsKeyDown(Enum.KeyCode.Space) or UIS:IsKeyDown(Enum.KeyCode.ButtonA)
-			if held and tick() - lastJump > 0.28 then
-				lastJump = tick()
-				setUpVelocity(55)
-			end
+	end
+
+	RunService.Heartbeat:Connect(function()
+		sync()
+		applyJumpPower()
+		if H.InfJump or H.DoubleJump then
+			applyDoubleJumpModifier()
 		end
 	end)
 
-	-- Third person: classic zoom, fight FP lock every frame
-	local tpConn = nil
+	-- Third person like Kicia defaults X=3 Y=2 Z=6 shoulder cam
+	local tpX, tpY, tpZ = 3, 2, 6
 	RunService.RenderStepped:Connect(function()
+		sync()
 		if not H.ThirdPerson then return end
 		pcall(function()
 			LP.CameraMode = Enum.CameraMode.Classic
-			LP.CameraMaxZoomDistance = 64
 			LP.CameraMinZoomDistance = 0.5
-			-- force zoom out if still glued
-			if LP.CameraMinZoomDistance == LP.CameraMaxZoomDistance then
-				LP.CameraMinZoomDistance = 0.5
-				LP.CameraMaxZoomDistance = 64
-			end
+			LP.CameraMaxZoomDistance = 64
 			local cam = Workspace.CurrentCamera
-			local h = hum()
-			if cam and h then
-				cam.CameraType = Enum.CameraType.Custom
-				cam.CameraSubject = h
-				h.CameraOffset = Vector3.new(2, 1.5, 0)
-			end
-			local ch = LP.Character
-			if ch then
-				for _, p in ipairs(ch:GetDescendants()) do
-					if p:IsA("BasePart") then
-						p.LocalTransparencyModifier = 0
-					end
+			local char = LP.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+			if not (cam and hum and hrp) then return end
+			cam.CameraType = Enum.CameraType.Custom
+			cam.CameraSubject = hum
+			-- body visible
+			for _, p in ipairs(char:GetDescendants()) do
+				if p:IsA("BasePart") then
+					p.LocalTransparencyModifier = 0
 				end
+			end
+			-- shoulder offset (Kicia X,Y,Z)
+			hum.CameraOffset = Vector3.new(tpX, tpY, 0)
+			-- also push camera back along look if still first-person-ish
+			local look = cam.CFrame.LookVector
+			local right = cam.CFrame.RightVector
+			local wantPos = hrp.Position + Vector3.new(0, tpY + 1.5, 0) - look * tpZ + right * tpX
+			-- soft blend only when zoom is very close
+			if LP.CameraMaxZoomDistance > 1 and (cam.CFrame.Position - hrp.Position).Magnitude < 2.5 then
+				cam.CFrame = CFrame.new(wantPos, wantPos + look)
 			end
 		end)
 	end)
 
-	-- Device
+	-- Device spoof soft loop
 	task.spawn(function()
 		while true do
 			task.wait(6)
+			sync()
 			if H.DeviceSpoof then
 				local map = {
 					PC = "MouseKeyboard", Mobile = "Touch", Console = "Gamepad", VR = "VR",
@@ -4394,19 +4360,20 @@ task.spawn(function()
 				}
 				local code = map[H.DeviceName] or "MouseKeyboard"
 				pcall(function()
-					local r = game:GetService("ReplicatedStorage")
-					r = r:FindFirstChild("Remotes") and r.Remotes:FindFirstChild("Replication")
-					r = r and r:FindFirstChild("Fighter") and r.Fighter:FindFirstChild("SetControls")
+					local r = RS:FindFirstChild("Remotes")
+					r = r and r:FindFirstChild("Replication")
+					r = r and r:FindFirstChild("Fighter")
+					r = r and r:FindFirstChild("SetControls")
 					if r then r:FireServer(code) end
 				end)
 			end
 		end
 	end)
 
-	print("[CuteGirl] recovery v2 jump/tp/rage-immune-strip")
+	print("[CuteGirl] recovery v3 MaxDoubleJumps + TP")
 	pcall(function()
 		if Library and Library.Notify then
-			Library:Notify("Jump/TP recovery v2 loaded", 3)
+			Library:Notify("Jump/TP v3 (Kicia-style) loaded", 3)
 		end
 	end)
 end)
