@@ -999,7 +999,33 @@ task.spawn(function()
 			end
 		end)
 
-		Library:OnUnload(function()
+		
+
+-- Kicia-style Jump Power + Third Person
+task.spawn(function()
+	local RunService = game:GetService("RunService")
+	local Players = game:GetService("Players")
+	local LP = Players.LocalPlayer
+	RunService.Heartbeat:Connect(function()
+		pcall(function()
+			local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+			if not hum then return end
+			if S.JumpPower then
+				hum.JumpPower = S.JumpPowerValue or 50
+				hum.UseJumpPower = true
+			end
+			if S.ThirdPerson then
+				hum.CameraOffset = Vector3.new(0, 1.5, 8)
+			else
+				if hum.CameraOffset.Magnitude > 0.5 then
+					hum.CameraOffset = Vector3.zero
+				end
+			end
+		end)
+	end)
+end)
+
+Library:OnUnload(function()
 			pcall(function() sg:Destroy() end)
 		end)
 	else
@@ -1057,6 +1083,13 @@ do
 	GunBox:AddSlider("AimSmooth", { Text = "Aim Smooth", Default = 0.35, Min = 0.15, Max = 0.7, Rounding = 2, Callback = function(v) S.AimSmooth = v end })
 	GunBox:AddToggle("TeamCheck", { Text = "Team Check", Default = true, Callback = function(v) S.TeamCheck = v end })
 	GunBox:AddToggle("WallCheck", { Text = "Wall Check", Default = true, Callback = function(v) S.WallCheck = v end })
+	GunBox:AddToggle("ForceHead", { Text = "Force Head", Default = true, Callback = function(v) S.ForceHead = v end })
+	GunBox:AddSlider("HeadPriority", { Text = "Head Priority %", Default = 100, Min = 0, Max = 100, Rounding = 0, Callback = function(v) S.HeadPriority = v end })
+	GunBox:AddSlider("ActivationChance", { Text = "Activation %", Default = 100, Min = 1, Max = 100, Rounding = 0, Callback = function(v) S.ActivationChance = v end })
+	GunBox:AddToggle("NotReloading", { Text = "Not Reloading", Default = true, Callback = function(v) S.NotReloading = v end })
+	GunBox:AddToggle("ScopedOnly", { Text = "Scoped Only", Default = false, Callback = function(v) S.ScopedOnly = v end })
+	GunBox:AddToggle("WithinFOV", { Text = "Within FOV Only", Default = true, Callback = function(v) S.WithinFOV = v end })
+	GunBox:AddToggle("SilentManipulate", { Text = "Silent Manipulate", Default = true, Callback = function(v) S.SilentManipulate = v end })
 	local FireBox = Tabs.Combat:AddRightGroupbox("Weapon")
 	FireBox:AddToggle("NoCooldown", { Text = "Rapid Fire", Default = false, Callback = function(v) S.RapidFire = v end })
 	FireBox:AddToggle("NoSpread", { Text = "No Spread", Default = false, Callback = function(v) S.NoSpread = v end })
@@ -1099,6 +1132,9 @@ do
 	MoveBox:AddToggle("WalkSpeed", { Text = "Walk Speed", Default = false, Callback = function(v) S.WalkSpeed = v end })
 	MoveBox:AddSlider("WalkSpeedValue", { Text = "Walk Value", Default = 45, Min = 16, Max = 200, Rounding = 0, Callback = function(v) S.WalkSpeedValue = v end })
 	MoveBox:AddToggle("Freecam", { Text = "Freecam", Default = false, Callback = function(v) S.Freecam = v end })
+	MoveBox:AddToggle("JumpPower", { Text = "Jump Power", Default = false, Callback = function(v) S.JumpPower = v end })
+	MoveBox:AddSlider("JumpPowerValue", { Text = "Jump Value", Default = 50, Min = 20, Max = 200, Rounding = 0, Callback = function(v) S.JumpPowerValue = v end })
+	MoveBox:AddToggle("ThirdPerson", { Text = "Third Person", Default = false, Callback = function(v) S.ThirdPerson = v end })
 end
 
 
@@ -2323,23 +2359,28 @@ local function getTarget(ignoreWall, fov)
 	return getNearest(ignoreWall)
 end
 
-local function encodeShot(from, to, head)
+local -- Silent encode: camera-origin packet bent onto head hitbox (noscope works)
+function encodeShot(from, to, head)
 	if not Utility then return nil end
-	-- force destination to head position if head part given
-	if head and head.Position then
+	if head and head:IsA("BasePart") then
 		to = head.Position
 	end
+	from = from or (Workspace.CurrentCamera and Workspace.CurrentCamera.CFrame.Position) or to
 	local look = CFrame.lookAt(from, to)
 	local e = Utility:EncodeCFrame(look)
 	local hitPart = head
-	-- relative offset on head (center)
-	local rel = CFrame.new(0, 0, 0)
+	local relE
 	pcall(function()
-		if head then
-			rel = head.CFrame:ToObjectSpace(CFrame.new(to))
+		local rel = CFrame.new()
+		if head and head:IsA("BasePart") then
+			-- center of head hitbox
+			rel = head.CFrame:ToObjectSpace(CFrame.new(head.Position))
 		end
+		relE = Utility:EncodeCFrame(rel)
 	end)
-	local relE = Utility:EncodeCFrame(rel)
+	if not relE then
+		relE = Utility:EncodeCFrame(CFrame.new())
+	end
 	return {
 		[utf8.char(1)] = {
 			[utf8.char(0)] = e,
@@ -2388,31 +2429,72 @@ task.spawn(function()
 		if not isLocal or type(c) ~= "table" then
 			return a, b, c, d, e
 		end
+
+		-- Kicia-style activation filters
+		if S.ActivationChance and S.ActivationChance < 100 then
+			if math.random(1, 100) > S.ActivationChance then
+				return a, b, c, d, e
+			end
+		end
+		if S.NotReloading then
+			local reloading = false
+			pcall(function()
+				local item = self.ClientFighter and self.ClientFighter.EquippedItem
+				if item then
+					reloading = item:Get("Reloading") or item:Get("IsReloading") or false
+				end
+			end)
+			if reloading then return a, b, c, d, e end
+		end
+		if S.ScopedOnly then
+			local scoped = false
+			pcall(function()
+				local item = self.ClientFighter and self.ClientFighter.EquippedItem
+				if item then
+					scoped = item:Get("IsScoped") or item:Get("Scoped") or item:Get("ADS") or false
+				end
+			end)
+			if not scoped then return a, b, c, d, e end
+		end
+
 		local head
 		if S.SilentAim then
 			local ignoreWall = not S.WallCheck
-			head = getCrosshair(S.AimFOV or 400)
-			if not head then head = getTarget(ignoreWall, S.AimFOV or 400) end
+			local fov = (S.WithinFOV and (S.AimFOV or 400)) or 9999
+			head = getCrosshair(fov)
+			if not head then head = getTarget(ignoreWall, fov) end
 			if not head then head = getNearest(ignoreWall) end
 		elseif S.Triggerbot then
 			head = getCrosshair(S.TrigFOV or 120)
 		end
-		head = forceHeadPart(head)
+		-- Force Head (Kicia Head %)
+		if S.ForceHead or (S.HeadPriority and S.HeadPriority >= 50) then
+			head = forceHeadPart(head)
+		elseif head and math.random(1, 100) <= (S.HeadPriority or 100) then
+			head = forceHeadPart(head)
+		end
 
-		-- STRICT: wall between us and head => do NOTHING (no bend, no extra remote)
-		if not head or not canSilentTarget(head) then
+		-- STRICT wall check for silent (unless silent manipulate + no wall check)
+		if not head then
+			return a, b, c, d, e
+		end
+		if S.WallCheck and not canSilentTarget(head) then
 			return a, b, c, d, e
 		end
 
+		-- Silent: ALWAYS camera origin so noscope / remote head works
 		if Utility then
 			local pos = head.Position
-			local from = Cam.CFrame.Position
+			local cam = Workspace.CurrentCamera
+			local from = (cam and cam.CFrame.Position) or pos
+			-- slight multi-origin for sniper / lag compensation
+			local origins = {
+				from,
+				pos + Vector3.new(0, 0.05, 0), -- wallbang-style glue
+				from + Vector3.new(0, 0.1, 0),
+			}
 			pcall(function()
-				local root = getRootPart()
-				if root then from = root.Position end
-			end)
-			pcall(function()
-				local data = encodeShot(from, pos, head)
+				local data = encodeShot(origins[1], pos, head)
 				if data then
 					local slot = data[utf8.char(1)]
 					c[utf8.char(1)] = slot
@@ -2423,6 +2505,30 @@ task.spawn(function()
 				end
 			end)
 			d = true
+			-- extra remote burst for reliability (silent only)
+			if S.SilentAim and S.SilentManipulate ~= false then
+				task.defer(function()
+					pcall(function()
+						refreshMods()
+						if not (UseItem and EnumLibrary) then return end
+						local se = EnumLibrary:ToEnum("StartShooting")
+						local oid = nil
+						pcall(function()
+							local lf = getFighter and getFighter()
+							if lf and lf.EquippedItem then
+								oid = lf.EquippedItem:Get("ObjectID")
+							end
+						end)
+						if not oid then return end
+						for _, o in ipairs(origins) do
+							local data = encodeShot(o, pos, head)
+							if data then
+								UseItem:FireServer(oid, se, data, nil)
+							end
+						end
+					end)
+				end)
+			end
 		end
 		return a, b, c, d, e
 	end
@@ -2468,26 +2574,23 @@ end)
 local lastSilent = 0
 RunService.Heartbeat:Connect(function()
 	if not S.SilentAim then return end
-	if not S.WallCheck then
-		-- wall check off: allowed
-	end
 	local holding = false
 	pcall(function()
 		holding = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
 			or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
 	end)
 	if not holding then return end
-	if tick() - lastSilent < 0.04 then return end
+	if tick() - lastSilent < 0.03 then return end
 
 	local ignoreWall = not S.WallCheck
-	local head = getCrosshair(S.AimFOV or 450)
-	if not head then head = getTarget(ignoreWall, S.AimFOV or 450) end
+	local fov = (S.WithinFOV and (S.AimFOV or 450)) or 9999
+	local head = getCrosshair(fov)
+	if not head then head = getTarget(ignoreWall, fov) end
 	if not head then head = getNearest(ignoreWall) end
-	head = forceHeadPart(head)
+	if S.ForceHead ~= false then head = forceHeadPart(head) end
 
-	-- MUST pass wall check
 	if not head then return end
-	if not canSilentTarget(head) then return end
+	if S.WallCheck and not canSilentTarget(head) then return end
 
 	refreshMods()
 	if not (Utility and EnumLibrary and UseItem) then return end
@@ -2496,15 +2599,23 @@ RunService.Heartbeat:Connect(function()
 	local ok, oid = pcall(function() return lf.EquippedItem:Get("ObjectID") end)
 	local okE, se = pcall(function() return EnumLibrary:ToEnum("StartShooting") end)
 	if not (ok and oid and okE and se) then return end
-	local from = Cam.CFrame.Position
-	local root = getRootPart()
-	if root then from = root.Position end
-	-- final ray again right before fire
+	-- camera origin = remote head bend (noscope / range)
+	local cam = Workspace.CurrentCamera
+	local from = (cam and cam.CFrame.Position) or head.Position
 	local char = head:FindFirstAncestorOfClass("Model")
-	if S.WallCheck and not hasLOS(from, head.Position, char) then return end
+	if S.WallCheck then
+		if not hasLOS(from, head.Position, char) and not canSilentTarget(head) then
+			return
+		end
+	end
 	local data = encodeShot(from, head.Position, head)
 	if data then
 		pcall(function() UseItem:FireServer(oid, se, data, nil) end)
+		-- second packet glued on head for consistency
+		local data2 = encodeShot(head.Position + Vector3.new(0, 0.05, 0), head.Position, head)
+		if data2 then
+			pcall(function() UseItem:FireServer(oid, se, data2, nil) end)
+		end
 		lastSilent = tick()
 	end
 end)
