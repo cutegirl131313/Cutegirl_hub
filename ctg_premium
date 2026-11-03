@@ -8,16 +8,16 @@ do
 	local UIS = game:GetService("UserInputService")
 
 	local VALID_KEYS = {
-		["CG-UWWT-BZ0C-D1HM-CNO3"] = true,
-	["CG-G93Y-SKVW-MXV7-DQTM"] = true,
-	["CG-1NWY-JZZV-M4JO-U98D"] = true,
-	["CG-VZH1-JED8-KX65-7V67"] = true,
-	["CG-WI9T-RLIE-0MBH-PMZP"] = true,
-	["CG-8TYY-UJQG-60DA-QL59"] = true,
-	["CG-K3L0-YOG4-ARC4-EBAH"] = true,
-	["CG-JFPS-1EFB-GVDS-3QYK"] = true,
-	["CG-J7MX-HYPP-X34K-6CCR"] = true,
-	["CG-BQMW-U0J2-5TXU-WDIM"] = true
+	["CG-9VFF-TNLT-IC7M-8QOG"] = true,
+	["CG-1YF4-NY8V-AO57-FG97"] = true,
+	["CG-IJRX-EKYK-HAQM-6SPC"] = true,
+	["CG-OU9I-ZCAD-O40R-E1BE"] = true,
+	["CG-TAZC-2AJL-LLPP-FLFO"] = true,
+	["CG-6V2G-6RLH-3076-F3GO"] = true,
+	["CG-UFR9-R0XT-XOHT-68Y9"] = true,
+	["CG-HXJ6-KWQI-QLUS-7AML"] = true,
+	["CG-EE5X-J5W7-AVBN-4GBN"] = true,
+	["CG-UYRM-NXD4-9IJL-H76I"] = true
 	}
 
 	local AUTH_FILE = "CuteGirlHub/auth.json"
