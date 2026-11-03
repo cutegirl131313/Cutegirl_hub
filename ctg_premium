@@ -1282,7 +1282,7 @@ local Tabs = {
 _G.HUB = _G.HUB or {
 	Aimbot = false, AimSmooth = 0.3, AimFOV = 300, SilentAim = false, Triggerbot = false,
 	TrigFOV = 120, ShowFOV = false, Wallbang = false,
-	VoidSpam = false, Desync = false, AutoReload = false, HitNotify = false, HitSound = false, KillSound = false, HitSoundName = "TF2 HitSound", KillSoundName = "Fatality",
+	VoidSpam = false, Desync = false, AutoReload = false, AutoHeal = true, AutoAmmoPickup = true, HitNotify = false, HitSound = false, KillSound = false, HitSoundName = "TF2 HitSound", KillSoundName = "Fatality",
 	AntiFlash = false, AntiSmoke = false, CustomCrosshair = false, ShowSpectators = false,
 	ESP = false, ESP_Name = false, ESP_HealthBar = false, ESP_Distance = false,
 	ESP_Box = false, ESP_Skeleton = false, ESP_Weapon = false, ESP_Chams = false,
@@ -1292,7 +1292,7 @@ _G.HUB = _G.HUB or {
 	RapidFire = false, NoRecoil = false, NoSpread = false,
 	WalkSpeed = false, WalkSpeedValue = 45, Freecam = false, FreecamSpeed = 50,
 	RageBot = false, RageMode = "gun", Orbit = false, OrbitStuds = 8,
-	RageMulti = 18, RageBoost = true, ImmunityCheck = false,
+	RageMulti = 18, RageBoost = true, RageAlwaysPierce = false,
 	ForceHead = true, HeadPriority = 100, ActivationChance = 100,
 	NotReloading = true, ScopedOnly = false, WithinFOV = true,
 	NotShielded = true, SilentManipulate = true, ThirdPerson = false,
@@ -1353,7 +1353,10 @@ do
 	GunBox:AddToggle("SilentManipulate", { Text = "Silent Manipulate", Default = true, Callback = function(v) S.SilentManipulate = v; _G.HUB.SilentManipulate = v end })
 	local FireBox = Tabs.Combat:AddRightGroupbox("Weapon")
 	FireBox:AddToggle("NoCooldown", { Text = "Rapid Fire", Default = false, Callback = function(v) S.RapidFire = v end })
-	FireBox:AddToggle("AutoPickup", { Text = "Auto Pickup Ammo/HP", Default = false, Callback = function(v) S.AutoPickup = v end })
+	FireBox:AddToggle("AutoPickup", { Text = "Auto Pickup Ammo/HP", Default = true, Callback = function(v) S.AutoPickup = v; _G.HUB.AutoPickup = v end })
+	FireBox:AddToggle("AutoHeal", { Text = "Auto Heal (Kicia)", Default = true, Callback = function(v) S.AutoHeal = v; _G.HUB.AutoHeal = v end })
+	FireBox:AddToggle("AutoAmmoPickup", { Text = "Auto Ammo Pickup", Default = true, Callback = function(v) S.AutoAmmoPickup = v; _G.HUB.AutoAmmoPickup = v end })
+	FireBox:AddToggle("AutoReload", { Text = "Auto Reload (Kicia)", Default = true, Callback = function(v) S.AutoReload = v; _G.HUB.AutoReload = v end })
 	FireBox:AddToggle("NoSpread", { Text = "No Spread", Default = false, Callback = function(v) S.NoSpread = v end })
 	FireBox:AddToggle("NoRecoil", { Text = "No Recoil", Default = false, Callback = function(v) S.NoRecoil = v end })
 	FireBox:AddToggle("HitNotify", { Text = "Hit Notify", Default = false, Callback = function(v) S.HitNotify = v end })
@@ -1377,7 +1380,7 @@ do
 	RageBox:AddToggle("RageBotSwitch", { Text = "Rage Bot", Default = false, Callback = function(v) S.RageBot = v; if runRageBot then runRageBot() end end })
 	RageBox:AddToggle("RageBoost", { Text = "Rage Boost (~0.1s)", Default = true, Callback = function(v) S.RageBoost = v end })
 	RageBox:AddSlider("RageMulti", { Text = "Multi Shots", Default = 12, Min = 1, Max = 20, Rounding = 0, Callback = function(v) S.RageMulti = v end })
-	RageBox:AddLabel("Immunity: OFF (hard pierce)")
+	RageBox:AddLabel("NO IMMUNITY CHECK")
 	RageBox:AddLabel("Tag: rage.void / rage.null")
 	RageBox:AddToggle("OrbitSwitch", { Text = "Orbit", Default = false, Callback = function(v) S.Orbit = v; if setOrbit then setOrbit(v) end end })
 	RageBox:AddSlider("OrbitStuds", { Text = "Orbit Studs", Default = 8, Min = 2, Max = 30, Rounding = 0, Callback = function(v) S.OrbitStuds = v; if setOrbitStuds then setOrbitStuds(v) end end })
@@ -2146,6 +2149,56 @@ function runRageBot()
 	_halmu.rageEnabled = S.RageBot == true
 	pcall(function() _halmu.startRage(_halmu.rageEnabled) end)
 end
+
+-- GLOBAL: delete immunity concept for everyone while rage is on
+task.spawn(function()
+	local Players = game:GetService("Players")
+	local RunService = game:GetService("RunService")
+	local LP = Players.LocalPlayer
+	local keys = {
+		"Invulnerable","Invincibility","SpawnProtection","SpawnProtect","Protected",
+		"Immunity","IsImmune","NoDamage","ForceField","Shielded","HasShield",
+		"CanTakeDamage","GodMode","iFrame","IFrame","SpawnGuard","RespawnImmunity",
+		"DamageDisabled","NoHurt","Untargetable","IsInvincible","SpawnImmunity",
+	}
+	local function wipe(c)
+		if not c then return end
+		for _, key in ipairs(keys) do
+			pcall(function()
+				local v = c:GetAttribute(key)
+				if v ~= nil then
+					if key == "CanTakeDamage" then c:SetAttribute(key, true)
+					elseif type(v) == "boolean" then c:SetAttribute(key, false)
+					elseif type(v) == "number" then c:SetAttribute(key, 0)
+					else c:SetAttribute(key, nil) end
+				end
+			end)
+			local h = c:FindFirstChildOfClass("Humanoid")
+			if h then
+				pcall(function()
+					local v = h:GetAttribute(key)
+					if v ~= nil then
+						if key == "CanTakeDamage" then h:SetAttribute(key, true)
+						elseif type(v) == "boolean" then h:SetAttribute(key, false)
+						elseif type(v) == "number" then h:SetAttribute(key, 0)
+						else h:SetAttribute(key, nil) end
+					end
+				end)
+			end
+		end
+		for _, d in ipairs(c:GetDescendants()) do
+			if d:IsA("ForceField") then pcall(function() d:Destroy() end) end
+		end
+	end
+	RunService.Heartbeat:Connect(function()
+		if not (S and S.RageBot) and not (_halmu and _halmu.rageEnabled) then return end
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr ~= LP and plr.Character then
+				wipe(plr.Character)
+			end
+		end
+	end)
+end)
 
 
 
@@ -4376,4 +4429,170 @@ task.spawn(function()
 			Library:Notify("Jump/TP v3 (Kicia-style) loaded", 3)
 		end
 	end)
+end)
+
+
+--==========================================================================
+-- Kicia Auto Heal / Auto Ammo Pickup / Auto Reload
+--==========================================================================
+task.spawn(function()
+	local Players = game:GetService("Players")
+	local RunService = game:GetService("RunService")
+	local Workspace = game:GetService("Workspace")
+	local RS = game:GetService("ReplicatedStorage")
+	local LP = Players.LocalPlayer
+
+	_G.HUB = _G.HUB or {}
+	local H = _G.HUB
+	H.AutoHeal = (H.AutoHeal ~= false)
+	H.AutoAmmoPickup = (H.AutoAmmoPickup ~= false)
+	H.AutoReload = (H.AutoReload ~= false)
+	H.AutoPickup = (H.AutoPickup ~= false)
+
+	local ft = firetouchinterest
+	local lastReload = 0
+
+	local function sync()
+		pcall(function()
+			if type(S) == "table" then
+				for _, k in ipairs({"AutoHeal","AutoAmmoPickup","AutoReload","AutoPickup"}) do
+					if S[k] ~= nil then H[k] = S[k] end
+				end
+			end
+		end)
+	end
+
+	local function getBodyPart()
+		local c = LP.Character
+		if not c then return nil end
+		return c:FindFirstChild("HumanoidRootPart")
+			or c:FindFirstChild("HitboxBody")
+			or c:FindFirstChild("UpperTorso")
+			or c:FindFirstChild("Torso")
+	end
+
+	local function isHealthPart(obj)
+		local n = string.lower(obj.Name)
+		return string.find(n, "health") or string.find(n, "heal") or string.find(n, "med")
+			or string.find(n, "heart") or string.find(n, "hp") or string.find(n, "kit")
+	end
+	local function isAmmoPart(obj)
+		local n = string.lower(obj.Name)
+		return string.find(n, "ammo") or string.find(n, "bullet") or string.find(n, "mag")
+			or string.find(n, "clip") or string.find(n, "shell")
+	end
+
+	local function touchPart(part, body)
+		if not ft or not part or not body then return end
+		pcall(function()
+			ft(part, body, 0)
+			ft(part, body, 1)
+		end)
+	end
+
+	-- Auto Heal + Auto Ammo (Kicia firetouchinterest style)
+	RunService.Heartbeat:Connect(function()
+		sync()
+		if not (H.AutoHeal or H.AutoAmmoPickup or H.AutoPickup) then return end
+		local body = getBodyPart()
+		local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+		if not body then return end
+		local needHeal = H.AutoHeal and hum and hum.Health < hum.MaxHealth - 0.5
+		local needAmmo = H.AutoAmmoPickup or H.AutoPickup
+		if not needHeal and not needAmmo then return end
+
+		for _, obj in ipairs(Workspace:GetDescendants()) do
+			if obj:IsA("BasePart") then
+				local dist = (obj.Position - body.Position).Magnitude
+				if dist < 80 then
+					if needHeal and isHealthPart(obj) then
+						touchPart(obj, body)
+					end
+					if needAmmo and isAmmoPart(obj) then
+						touchPart(obj, body)
+					end
+					if H.AutoPickup and (isHealthPart(obj) or isAmmoPart(obj) or string.find(string.lower(obj.Name), "pickup") or string.find(string.lower(obj.Name), "drop")) then
+						touchPart(obj, body)
+					end
+				end
+			end
+		end
+	end)
+
+	-- Auto Reload (Kicia: UseItem StartReloading)
+	RunService.Heartbeat:Connect(function()
+		sync()
+		if not H.AutoReload then return end
+		if tick() - lastReload < 0.35 then return end
+
+		pcall(function()
+			-- need Utility / EnumLibrary / UseItem from hub
+			if not (Utility and EnumLibrary and UseItem) then
+				-- try refresh
+				if type(refreshMods) == "function" then refreshMods() end
+			end
+			if not (Utility and EnumLibrary and UseItem) then return end
+
+			local lf = nil
+			pcall(function()
+				if type(getFighter) == "function" then lf = getFighter() end
+			end)
+			if not lf then
+				pcall(function()
+					local FC = require(LP.PlayerScripts.Controllers.FighterController)
+					lf = FC.LocalFighter or (FC.GetFighter and FC:GetFighter(LP))
+				end)
+			end
+			if not lf or not lf.EquippedItem then return end
+			local item = lf.EquippedItem
+
+			local ammo, maxAmmo, reserve, reloading
+			pcall(function()
+				ammo = item:Get("Ammo") or item:Get("AmmoInClip")
+				maxAmmo = item:Get("MaxAmmo") or item:Get("ClipSize") or item:Get("MagazineSize")
+				reserve = item:Get("AmmoReserve") or item:Get("ReserveAmmo") or item:Get("StoredAmmo")
+				reloading = item:Get("Reloading") or item:Get("IsReloading")
+			end)
+			if reloading then return end
+			if type(ammo) ~= "number" then return end
+			-- reload when empty or under 20%
+			local need = false
+			if type(maxAmmo) == "number" and maxAmmo > 0 then
+				need = ammo <= 0 or ammo < maxAmmo * 0.15
+			else
+				need = ammo <= 0
+			end
+			if not need then return end
+			if type(reserve) == "number" and reserve <= 0 then return end
+
+			local oid
+			pcall(function() oid = item:Get("ObjectID") or item.ObjectId end)
+			if not oid then return end
+
+			local se
+			pcall(function() se = EnumLibrary:ToEnum("StartReloading") end)
+			if not se then
+				pcall(function() se = EnumLibrary:ToEnum("Reload") end)
+			end
+			if not se then return end
+
+			local Reload = nil
+			pcall(function()
+				if Utility.Encode then Reload = Utility:Encode("Reload") end
+			end)
+			-- Kicia packet shape
+			local payload
+			if Reload ~= nil then
+				payload = { ["\1"] = Reload, ["\2"] = Reload }
+			else
+				payload = { ["\1"] = "Reload", ["\2"] = "Reload" }
+			end
+			pcall(function()
+				UseItem:FireServer(oid, se, payload, nil)
+			end)
+			lastReload = tick()
+		end)
+	end)
+
+	print("[CuteGirl] Kicia AutoHeal/AutoReload loaded")
 end)
