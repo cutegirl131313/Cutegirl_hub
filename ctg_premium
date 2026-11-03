@@ -1080,9 +1080,17 @@ task.spawn(function()
 			if not hum then return end
 
 			if h.JumpPower then
-				hum.UseJumpPower = true
-				hum.JumpPower = h.JumpPowerValue or 50
-				pcall(function() hum.JumpHeight = (h.JumpPowerValue or 50) / 7.2 end)
+				local jp = h.JumpPowerValue or 50
+				pcall(function()
+					hum.UseJumpPower = true
+					hum.JumpPower = jp
+					hum.JumpHeight = math.clamp(jp / 7.2, 2, 50)
+				end)
+			end
+			if h.WalkSpeed then
+				pcall(function()
+					hum.WalkSpeed = h.WalkSpeedValue or 45
+				end)
 			end
 
 			local want = h.ThirdPerson == true
@@ -1127,6 +1135,119 @@ task.spawn(function()
 		end
 	end)
 end)
+
+-- Jump Power (velocity) + Double Jump + Infinite Jump
+task.spawn(function()
+	local UIS = game:GetService("UserInputService")
+	local RunService = game:GetService("RunService")
+	local Players = game:GetService("Players")
+	local LP = Players.LocalPlayer
+	local jumpsLeft = 0
+	local lastJump = 0
+
+	local function getHum()
+		return LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+	end
+	local function getRoot()
+		return LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+	end
+
+	local function doBoostJump()
+		local h = _G.HUB or S
+		local root = getRoot()
+		local hum = getHum()
+		if not root or not hum then return end
+		local jp = tonumber(h.JumpPowerValue) or 50
+		-- stronger vertical impulse so game can't ignore JumpPower property
+		local vy = math.clamp(jp * 1.15, 40, 180)
+		local v = root.AssemblyLinearVelocity
+		root.AssemblyLinearVelocity = Vector3.new(v.X, vy, v.Z)
+		pcall(function()
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		end)
+	end
+
+	local function onJumpRequest()
+		local h = _G.HUB or S
+		if not h then return end
+		local now = tick()
+		if now - lastJump < 0.12 then return end
+
+		local hum = getHum()
+		if not hum or hum.Health <= 0 then return end
+		local state = hum:GetState()
+		local onGround = state == Enum.HumanoidStateType.Running
+			or state == Enum.HumanoidStateType.RunningNoPhysics
+			or state == Enum.HumanoidStateType.Landed
+			or state == Enum.HumanoidStateType.Climbing
+			or hum.FloorMaterial ~= Enum.Material.Air
+
+		if h.InfJump then
+			lastJump = now
+			doBoostJump()
+			return
+		end
+
+		if onGround then
+			jumpsLeft = (h.DoubleJump and 1) or 0
+			if h.JumpPower then
+				lastJump = now
+				doBoostJump()
+			end
+			return
+		end
+
+		-- mid-air
+		if h.DoubleJump and jumpsLeft > 0 then
+			jumpsLeft = jumpsLeft - 1
+			lastJump = now
+			doBoostJump()
+		elseif h.JumpPower and onGround then
+			lastJump = now
+			doBoostJump()
+		end
+	end
+
+	pcall(function()
+		UIS.JumpRequest:Connect(function()
+			onJumpRequest()
+		end)
+	end)
+
+	-- mobile / hold space spam for inf jump
+	RunService.Heartbeat:Connect(function()
+		local h = _G.HUB or S
+		if not h or not h.InfJump then return end
+		if tick() - lastJump < 0.18 then return end
+		local held = false
+		pcall(function()
+			held = UIS:IsKeyDown(Enum.KeyCode.Space) or UIS:IsKeyDown(Enum.KeyCode.ButtonA)
+		end)
+		if held then
+			lastJump = tick()
+			doBoostJump()
+		end
+	end)
+
+	-- keep humanoid jump stats applied when JumpPower on
+	RunService.Heartbeat:Connect(function()
+		local h = _G.HUB or S
+		if not h or not h.JumpPower then return end
+		local hum = getHum()
+		if not hum then return end
+		local jp = tonumber(h.JumpPowerValue) or 50
+		pcall(function()
+			hum.UseJumpPower = true
+			hum.JumpPower = jp
+			hum.JumpHeight = math.clamp(jp / 7.2, 2, 60)
+		end)
+	end)
+
+	LP.CharacterAdded:Connect(function()
+		jumpsLeft = 0
+	end)
+end)
+
 
 Library:OnUnload(function()
 			pcall(function() sg:Destroy() end)
@@ -1175,7 +1296,7 @@ _G.HUB = _G.HUB or {
 	ForceHead = true, HeadPriority = 100, ActivationChance = 100,
 	NotReloading = true, ScopedOnly = false, WithinFOV = true,
 	NotShielded = true, SilentManipulate = true, ThirdPerson = false,
-	JumpPower = false, JumpPowerValue = 50, Watermark = true,
+	JumpPower = false, JumpPowerValue = 50, DoubleJump = false, InfJump = false, Watermark = true,
 }
 local S = _G.HUB
 -- ensure new option keys always exist
@@ -1184,7 +1305,7 @@ do
 		ForceHead = true, HeadPriority = 100, ActivationChance = 100,
 		NotReloading = true, ScopedOnly = false, WithinFOV = true,
 		SilentManipulate = true, ThirdPerson = false,
-		JumpPower = false, JumpPowerValue = 50,
+		JumpPower = false, JumpPowerValue = 50, DoubleJump = false, InfJump = false,
 	}
 	for k, v in pairs(defs) do
 		if S[k] == nil then S[k] = v end
@@ -1273,8 +1394,10 @@ do
 	MoveBox:AddToggle("WalkSpeed", { Text = "Walk Speed", Default = false, Callback = function(v) S.WalkSpeed = v end })
 	MoveBox:AddSlider("WalkSpeedValue", { Text = "Walk Value", Default = 45, Min = 16, Max = 200, Rounding = 0, Callback = function(v) S.WalkSpeedValue = v end })
 	MoveBox:AddToggle("Freecam", { Text = "Freecam", Default = false, Callback = function(v) S.Freecam = v end })
-	MoveBox:AddToggle("JumpPower", { Text = "Jump Power", Default = false, Callback = function(v) S.JumpPower = v end })
-	MoveBox:AddSlider("JumpPowerValue", { Text = "Jump Value", Default = 50, Min = 20, Max = 200, Rounding = 0, Callback = function(v) S.JumpPowerValue = v end })
+	MoveBox:AddToggle("JumpPower", { Text = "Jump Power", Default = false, Callback = function(v) S.JumpPower = v; _G.HUB.JumpPower = v end })
+	MoveBox:AddSlider("JumpPowerValue", { Text = "Jump Value", Default = 50, Min = 20, Max = 200, Rounding = 0, Callback = function(v) S.JumpPowerValue = v; _G.HUB.JumpPowerValue = v end })
+	MoveBox:AddToggle("DoubleJump", { Text = "Double Jump", Default = false, Callback = function(v) S.DoubleJump = v; _G.HUB.DoubleJump = v end })
+	MoveBox:AddToggle("InfJump", { Text = "Infinite Jump", Default = false, Callback = function(v) S.InfJump = v; _G.HUB.InfJump = v end })
 	MoveBox:AddToggle("ThirdPerson", { Text = "Third Person", Default = false, Callback = function(v) S.ThirdPerson = v; _G.HUB.ThirdPerson = v; if Library and Library.Notify then Library:Notify(v and "Third Person ON" or "Third Person OFF", 2) end end })
 end
 
