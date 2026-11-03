@@ -1394,10 +1394,10 @@ do
 	MoveBox:AddToggle("WalkSpeed", { Text = "Walk Speed", Default = false, Callback = function(v) S.WalkSpeed = v end })
 	MoveBox:AddSlider("WalkSpeedValue", { Text = "Walk Value", Default = 45, Min = 16, Max = 200, Rounding = 0, Callback = function(v) S.WalkSpeedValue = v end })
 	MoveBox:AddToggle("Freecam", { Text = "Freecam", Default = false, Callback = function(v) S.Freecam = v end })
-	MoveBox:AddToggle("JumpPower", { Text = "Jump Power", Default = false, Callback = function(v) S.JumpPower = v; _G.HUB.JumpPower = v end })
+	MoveBox:AddToggle("JumpPower", { Text = "Jump Power", Default = false, Callback = function(v) S.JumpPower = v; _G.HUB.JumpPower = v; pcall(function() Library:Notify(v and "Jump Power ON" or "Jump Power OFF", 2) end) end })
 	MoveBox:AddSlider("JumpPowerValue", { Text = "Jump Value", Default = 50, Min = 20, Max = 200, Rounding = 0, Callback = function(v) S.JumpPowerValue = v; _G.HUB.JumpPowerValue = v end })
-	MoveBox:AddToggle("DoubleJump", { Text = "Double Jump", Default = false, Callback = function(v) S.DoubleJump = v; _G.HUB.DoubleJump = v end })
-	MoveBox:AddToggle("InfJump", { Text = "Infinite Jump", Default = false, Callback = function(v) S.InfJump = v; _G.HUB.InfJump = v end })
+	MoveBox:AddToggle("DoubleJump", { Text = "Double Jump", Default = false, Callback = function(v) S.DoubleJump = v; _G.HUB.DoubleJump = v; pcall(function() Library:Notify(v and "Double Jump ON" or "OFF", 2) end) end })
+	MoveBox:AddToggle("InfJump", { Text = "Infinite Jump", Default = false, Callback = function(v) S.InfJump = v; _G.HUB.InfJump = v; pcall(function() Library:Notify(v and "Inf Jump ON" or "OFF", 2) end) end })
 	MoveBox:AddToggle("ThirdPerson", { Text = "Third Person", Default = false, Callback = function(v) S.ThirdPerson = v; _G.HUB.ThirdPerson = v; if Library and Library.Notify then Library:Notify(v and "Third Person ON" or "Third Person OFF", 2) end end })
 end
 
@@ -4104,4 +4104,208 @@ Library:OnUnload(function()
         getgenv()._spoofConnection = nil
     end
     print("Cute Girl Hub unloaded")
+end)
+
+
+--==========================================================================
+-- HARD RECOVERY: movement + silent option bridge (always runs)
+--==========================================================================
+task.spawn(function()
+	local Players = game:GetService("Players")
+	local RunService = game:GetService("RunService")
+	local UIS = game:GetService("UserInputService")
+	local Workspace = game:GetService("Workspace")
+	local LP = Players.LocalPlayer
+
+	_G.HUB = _G.HUB or {}
+	local H = _G.HUB
+	H.JumpPower = H.JumpPower or false
+	H.JumpPowerValue = H.JumpPowerValue or 50
+	H.DoubleJump = H.DoubleJump or false
+	H.InfJump = H.InfJump or false
+	H.ThirdPerson = H.ThirdPerson or false
+	H.WalkSpeed = H.WalkSpeed or false
+	H.WalkSpeedValue = H.WalkSpeedValue or 45
+	H.ForceHead = (H.ForceHead ~= false)
+	H.HeadPriority = H.HeadPriority or 100
+	H.ActivationChance = H.ActivationChance or 100
+	H.NotReloading = (H.NotReloading ~= false)
+	H.ScopedOnly = H.ScopedOnly or false
+	H.WithinFOV = (H.WithinFOV ~= false)
+	H.SilentManipulate = (H.SilentManipulate ~= false)
+	H.DeviceSpoof = H.DeviceSpoof or false
+	H.DeviceName = H.DeviceName or "PC"
+
+	local function hum()
+		return LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+	end
+	local function root()
+		return LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+	end
+
+	-- ===== Jump / Double / Inf =====
+	local jumpsLeft, lastJump = 0, 0
+	local function boostJump()
+		local r, h = root(), hum()
+		if not r or not h then return end
+		local jp = tonumber(H.JumpPowerValue) or 50
+		local vy = math.clamp(jp * 1.25, 45, 200)
+		local v = r.AssemblyLinearVelocity
+		r.AssemblyLinearVelocity = Vector3.new(v.X, vy, v.Z)
+		pcall(function() h:ChangeState(Enum.HumanoidStateType.Jumping) end)
+	end
+
+	local function onJump()
+		local now = tick()
+		if now - lastJump < 0.11 then return end
+		local h = hum()
+		if not h or h.Health <= 0 then return end
+		local st = h:GetState()
+		local grounded = h.FloorMaterial ~= Enum.Material.Air
+			or st == Enum.HumanoidStateType.Running
+			or st == Enum.HumanoidStateType.Landed
+
+		if H.InfJump then
+			lastJump = now
+			boostJump()
+			return
+		end
+		if grounded then
+			jumpsLeft = H.DoubleJump and 1 or 0
+			if H.JumpPower or H.DoubleJump then
+				lastJump = now
+				boostJump()
+			end
+			return
+		end
+		if H.DoubleJump and jumpsLeft > 0 then
+			jumpsLeft = jumpsLeft - 1
+			lastJump = now
+			boostJump()
+		end
+	end
+
+	pcall(function()
+		UIS.JumpRequest:Connect(onJump)
+	end)
+	-- also Space / gamepad
+	UIS.InputBegan:Connect(function(inp, gp)
+		if gp then return end
+		if inp.KeyCode == Enum.KeyCode.Space or inp.KeyCode == Enum.KeyCode.ButtonA then
+			onJump()
+		end
+	end)
+
+	RunService.Heartbeat:Connect(function()
+		if H.InfJump and (UIS:IsKeyDown(Enum.KeyCode.Space) or UIS:IsKeyDown(Enum.KeyCode.ButtonA)) then
+			if tick() - lastJump > 0.16 then
+				lastJump = tick()
+				boostJump()
+			end
+		end
+		local h = hum()
+		if not h then return end
+		if H.JumpPower then
+			local jp = tonumber(H.JumpPowerValue) or 50
+			pcall(function()
+				h.UseJumpPower = true
+				h.JumpPower = jp
+				h.JumpHeight = math.clamp(jp / 7.2, 2, 60)
+			end)
+		end
+		if H.WalkSpeed then
+			pcall(function() h.WalkSpeed = H.WalkSpeedValue or 45 end)
+		end
+	end)
+
+	-- ===== Third person force =====
+	local wasTP = false
+	RunService.RenderStepped:Connect(function()
+		if not H.ThirdPerson then
+			if wasTP then
+				pcall(function()
+					LP.CameraMode = Enum.CameraMode.LockFirstPerson
+					local h = hum()
+					if h then h.CameraOffset = Vector3.zero end
+				end)
+				wasTP = false
+			end
+			return
+		end
+		wasTP = true
+		pcall(function()
+			LP.CameraMode = Enum.CameraMode.Classic
+			LP.CameraMinZoomDistance = 2
+			LP.CameraMaxZoomDistance = 40
+			local cam = Workspace.CurrentCamera
+			if cam then
+				cam.CameraType = Enum.CameraType.Custom
+				local h = hum()
+				if h then
+					cam.CameraSubject = h
+					h.CameraOffset = Vector3.new(1.5, 1.2, 0)
+				end
+			end
+			if LP.Character then
+				for _, p in ipairs(LP.Character:GetChildren()) do
+					if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+						p.LocalTransparencyModifier = 0
+					end
+				end
+			end
+		end)
+	end)
+
+	-- ===== Device spoof loop =====
+	local function fireDevice()
+		if not H.DeviceSpoof then return end
+		local map = { PC = "MouseKeyboard", Mobile = "Touch", Console = "Gamepad", VR = "VR",
+			DESKTOP = "MouseKeyboard", MOBILE = "Touch", CONSOLE = "Gamepad" }
+		local code = map[H.DeviceName] or "MouseKeyboard"
+		pcall(function()
+			local rem = game:GetService("ReplicatedStorage")
+			rem = rem:FindFirstChild("Remotes")
+			rem = rem and rem:FindFirstChild("Replication")
+			rem = rem and rem:FindFirstChild("Fighter")
+			rem = rem and rem:FindFirstChild("SetControls")
+			if rem then rem:FireServer(code) end
+		end)
+	end
+	task.spawn(function()
+		while true do
+			task.wait(8)
+			fireDevice()
+		end
+	end)
+
+	-- bridge Linoria toggles -> HUB if library exists
+	pcall(function()
+		local Library = rawget(getfenv() or {}, "Library")
+	end)
+	-- poll common toggle names from getgenv
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+			pcall(function()
+				-- keep H in sync if S table exists
+				if type(S) == "table" then
+					for _, k in ipairs({
+						"JumpPower","JumpPowerValue","DoubleJump","InfJump","ThirdPerson",
+						"WalkSpeed","WalkSpeedValue","ForceHead","HeadPriority","ActivationChance",
+						"NotReloading","ScopedOnly","WithinFOV","SilentManipulate",
+						"SilentAim","Triggerbot","WallCheck","AimFOV","DeviceSpoof","DeviceName",
+					}) do
+						if S[k] ~= nil then H[k] = S[k] end
+					end
+				end
+			end)
+		end
+	end)
+
+	pcall(function()
+		if Library and Library.Notify then
+			Library:Notify("Movement recovery loaded (Jump/TP/Device)", 3)
+		end
+	end)
+	print("[CuteGirl] hard recovery movement loaded")
 end)
