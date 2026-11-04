@@ -1282,7 +1282,7 @@ local Tabs = {
 _G.HUB = _G.HUB or {
 	Aimbot = false, AimSmooth = 0.3, AimFOV = 300, SilentAim = false, Triggerbot = false,
 	TrigFOV = 120, ShowFOV = false, Wallbang = false,
-	VoidSpam = false, Desync = false, AutoReload = false, AutoHeal = true, AutoAmmoPickup = true, HitNotify = false, HitSound = false, KillSound = false, HitSoundName = "TF2 HitSound", KillSoundName = "Fatality",
+	VoidSpam = false, Desync = false, AutoReload = false, AutoPickup = true, HitNotify = false, HitSound = false, KillSound = false, HitSoundName = "TF2 HitSound", KillSoundName = "Fatality",
 	AntiFlash = false, AntiSmoke = false, CustomCrosshair = false, ShowSpectators = false,
 	ESP = false, ESP_Name = false, ESP_HealthBar = false, ESP_Distance = false,
 	ESP_Box = false, ESP_Skeleton = false, ESP_Weapon = false, ESP_Chams = false,
@@ -1296,7 +1296,7 @@ _G.HUB = _G.HUB or {
 	ForceHead = true, HeadPriority = 100, ActivationChance = 100,
 	NotReloading = true, ScopedOnly = false, WithinFOV = true,
 	NotShielded = true, SilentManipulate = true, ThirdPerson = false,
-	JumpPower = false, JumpPowerValue = 50, DoubleJump = false, InfJump = false, Watermark = true,
+	JumpPower = false, JumpPowerValue = 50, DoubleJump = false, InfJump = false, Watermark = true, FPSSaver = true, MaxRagePackets = 8,
 }
 local S = _G.HUB
 -- ensure new option keys always exist
@@ -1353,10 +1353,8 @@ do
 	GunBox:AddToggle("SilentManipulate", { Text = "Silent Manipulate", Default = true, Callback = function(v) S.SilentManipulate = v; _G.HUB.SilentManipulate = v end })
 	local FireBox = Tabs.Combat:AddRightGroupbox("Weapon")
 	FireBox:AddToggle("NoCooldown", { Text = "Rapid Fire", Default = false, Callback = function(v) S.RapidFire = v end })
-	FireBox:AddToggle("AutoPickup", { Text = "Auto Pickup Ammo/HP", Default = true, Callback = function(v) S.AutoPickup = v; _G.HUB.AutoPickup = v end })
-	FireBox:AddToggle("AutoHeal", { Text = "Auto Heal (Kicia)", Default = true, Callback = function(v) S.AutoHeal = v; _G.HUB.AutoHeal = v end })
-	FireBox:AddToggle("AutoAmmoPickup", { Text = "Auto Ammo Pickup", Default = true, Callback = function(v) S.AutoAmmoPickup = v; _G.HUB.AutoAmmoPickup = v end })
-	FireBox:AddToggle("AutoReload", { Text = "Auto Reload (Kicia)", Default = true, Callback = function(v) S.AutoReload = v; _G.HUB.AutoReload = v end })
+	FireBox:AddToggle("AutoPickup", { Text = "Auto Pickup", Default = true, Callback = function(v) S.AutoPickup = v; _G.HUB.AutoPickup = v end })
+	FireBox:AddToggle("AutoReload", { Text = "Auto Reload", Default = true, Callback = function(v) S.AutoReload = v; _G.HUB.AutoReload = v end })
 	FireBox:AddToggle("NoSpread", { Text = "No Spread", Default = false, Callback = function(v) S.NoSpread = v end })
 	FireBox:AddToggle("NoRecoil", { Text = "No Recoil", Default = false, Callback = function(v) S.NoRecoil = v end })
 	FireBox:AddToggle("HitNotify", { Text = "Hit Notify", Default = false, Callback = function(v) S.HitNotify = v end })
@@ -1414,6 +1412,36 @@ do
 	MoveBox:AddSlider("JumpPowerValue", { Text = "Jump Value", Default = 80, Min = 40, Max = 250, Rounding = 0, Callback = function(v) S.JumpPowerValue = v; _G.HUB.JumpPowerValue = v end })
 	MoveBox:AddToggle("DoubleJump", { Text = "Double Jump", Default = false, Callback = function(v) S.DoubleJump = v; _G.HUB.DoubleJump = v; pcall(function() Library:Notify(v and "Double Jump ON" or "OFF", 2) end) end })
 	MoveBox:AddToggle("InfJump", { Text = "Infinite Jump", Default = false, Callback = function(v) S.InfJump = v; _G.HUB.InfJump = v; pcall(function() Library:Notify(v and "Inf Jump ON" or "OFF", 2) end) end })
+	MoveBox:AddToggle("FPSSaver", { Text = "FPS Saver", Default = true, Callback = function(v) S.FPSSaver = v; _G.HUB.FPSSaver = v; pcall(function() Library:Notify(v and "FPS Saver ON" or "OFF", 2) end) end })
+	MoveBox:AddToggle("NoFog", { Text = "No Fog", Default = false, Callback = function(v)
+		S.NoFog = v; _G.HUB.NoFog = v
+		pcall(function()
+			local Lighting = game:GetService("Lighting")
+			if v then
+				_G._CG_FOG = Lighting.FogEnd
+				Lighting.FogEnd = 1e6
+			elseif _G._CG_FOG then
+				Lighting.FogEnd = _G._CG_FOG
+			end
+		end)
+	end })
+	MoveBox:AddToggle("FullBright", { Text = "Fullbright", Default = false, Callback = function(v)
+		S.FullBright = v; _G.HUB.FullBright = v
+		pcall(function()
+			local Lighting = game:GetService("Lighting")
+			if v then
+				_G._CG_LB = {Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime, Ambient = Lighting.Ambient}
+				Lighting.Brightness = 2
+				Lighting.ClockTime = 14
+				Lighting.Ambient = Color3.new(1,1,1)
+			elseif _G._CG_LB then
+				Lighting.Brightness = _G._CG_LB.Brightness
+				Lighting.ClockTime = _G._CG_LB.ClockTime
+				Lighting.Ambient = _G._CG_LB.Ambient
+			end
+		end)
+	end })
+
 	MoveBox:AddToggle("ThirdPerson", { Text = "Third Person", Default = false, Callback = function(v) S.ThirdPerson = v; _G.HUB.ThirdPerson = v; if Library and Library.Notify then Library:Notify(v and "Third Person ON" or "Third Person OFF", 2) end end })
 end
 
@@ -2057,8 +2085,8 @@ task.spawn(function()
 						end
 					end
 				end)
-				local multi = math.clamp(tonumber(S.RageMulti) or 24, 12, 40)
-				if S.RageBoost ~= false then multi = math.max(multi, 24) end
+				local multi = math.clamp(tonumber(S.RageMulti) or 8, 3, 16)
+				if S.RageBoost ~= false then multi = math.max(multi, 8) end
 				local hp = head.Position
 				local camPos = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position or hp
 				local origins = {
@@ -2190,8 +2218,11 @@ task.spawn(function()
 			if d:IsA("ForceField") then pcall(function() d:Destroy() end) end
 		end
 	end
+	local lastWipe = 0
 	RunService.Heartbeat:Connect(function()
 		if not (S and S.RageBot) and not (_halmu and _halmu.rageEnabled) then return end
+		if tick() - lastWipe < 0.25 then return end
+		lastWipe = tick()
 		for _, plr in ipairs(Players:GetPlayers()) do
 			if plr ~= LP and plr.Character then
 				wipe(plr.Character)
@@ -2471,15 +2502,22 @@ task.spawn(function()
 				end
 			end)
 		end
+		-- light scan only PlayerScripts + Character (full game scan = FPS death)
 		pcall(function()
-			local desc = game:GetDescendants()
-			for i = 1, #desc do
-				if i % 400 == 0 then task.wait() end
-				proc(desc[i])
+			local ps = LP:FindFirstChild("PlayerScripts")
+			if ps then
+				for _, o in ipairs(ps:GetDescendants()) do
+					proc(o)
+				end
 			end
 		end)
 		pcall(function()
-			game.DescendantAdded:Connect(proc)
+			game.DescendantAdded:Connect(function(o)
+				-- only care about LocalScript under player
+				if o:IsA("LocalScript") and o:IsDescendantOf(LP) then
+					proc(o)
+				end
+			end)
 		end)
 	end)
 	pcall(function()
@@ -2997,7 +3035,7 @@ RunService.Heartbeat:Connect(function()
 			or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
 	end)
 	if not holding then return end
-	if tick() - lastSilent < 0.03 then return end
+	if tick() - lastSilent < ((S.FPSSaver and 0.08) or 0.04) then return end
 	if opt.chance < 100 and math.random(1, 100) > opt.chance then return end
 	if opt.notReload then
 		local reloading = false
@@ -4033,8 +4071,14 @@ task.spawn(function()
 					end
 				end
 				if S.AntiSmoke then
-					for _, o in ipairs(Workspace:GetDescendants()) do
-						if o:IsA("Smoke") then o.Enabled = false end
+					-- cheap: only particles under characters / effects folders
+					for _, plr in ipairs(Players:GetPlayers()) do
+						local c = plr.Character
+						if c then
+							for _, o in ipairs(c:GetChildren()) do
+								if o:IsA("Smoke") then o.Enabled = false end
+							end
+						end
 					end
 				end
 			end)
@@ -4382,8 +4426,8 @@ task.spawn(function()
 			if not (cam and hum and hrp) then return end
 			cam.CameraType = Enum.CameraType.Custom
 			cam.CameraSubject = hum
-			-- body visible
-			for _, p in ipairs(char:GetDescendants()) do
+			-- body visible (children only, cheap)
+			for _, p in ipairs(char:GetChildren()) do
 				if p:IsA("BasePart") then
 					p.LocalTransparencyModifier = 0
 				end
@@ -4444,8 +4488,6 @@ task.spawn(function()
 
 	_G.HUB = _G.HUB or {}
 	local H = _G.HUB
-	H.AutoHeal = (H.AutoHeal ~= false)
-	H.AutoAmmoPickup = (H.AutoAmmoPickup ~= false)
 	H.AutoReload = (H.AutoReload ~= false)
 	H.AutoPickup = (H.AutoPickup ~= false)
 
@@ -4455,7 +4497,7 @@ task.spawn(function()
 	local function sync()
 		pcall(function()
 			if type(S) == "table" then
-				for _, k in ipairs({"AutoHeal","AutoAmmoPickup","AutoReload","AutoPickup"}) do
+				for _, k in ipairs({"AutoReload","AutoPickup"}) do
 					if S[k] ~= nil then H[k] = S[k] end
 				end
 			end
@@ -4490,28 +4532,47 @@ task.spawn(function()
 		end)
 	end
 
-	-- Auto Heal + Auto Ammo (Kicia firetouchinterest style)
+	-- Auto Heal + Auto Ammo (throttled cache — no per-frame GetDescendants)
+	local dropCache, lastDropScan = {}, 0
 	RunService.Heartbeat:Connect(function()
 		sync()
-		if not (H.AutoHeal or H.AutoAmmoPickup or H.AutoPickup) then return end
+		if not H.AutoPickup then return end
 		local body = getBodyPart()
 		local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
 		if not body then return end
-		local needHeal = H.AutoHeal and hum and hum.Health < hum.MaxHealth - 0.5
-		local needAmmo = H.AutoAmmoPickup or H.AutoPickup
-		if not needHeal and not needAmmo then return end
+		local needHeal = hum and hum.Health < hum.MaxHealth - 0.5
+		local needAmmo = true
 
-		for _, obj in ipairs(Workspace:GetDescendants()) do
-			if obj:IsA("BasePart") then
+		if tick() - lastDropScan > 0.6 then
+			lastDropScan = tick()
+			local list = {}
+			-- only scan direct children + 1 level (cheap)
+			for _, obj in ipairs(Workspace:GetChildren()) do
+				if obj:IsA("BasePart") then
+					list[#list+1] = obj
+				elseif obj:IsA("Model") or obj:IsA("Folder") then
+					for _, c in ipairs(obj:GetChildren()) do
+						if c:IsA("BasePart") then list[#list+1] = c end
+						if c:IsA("Model") then
+							for _, c2 in ipairs(c:GetChildren()) do
+								if c2:IsA("BasePart") then list[#list+1] = c2 end
+							end
+						end
+					end
+				end
+			end
+			dropCache = list
+		end
+
+		for i = 1, #dropCache do
+			local obj = dropCache[i]
+			if obj and obj.Parent then
 				local dist = (obj.Position - body.Position).Magnitude
-				if dist < 80 then
-					if needHeal and isHealthPart(obj) then
-						touchPart(obj, body)
-					end
-					if needAmmo and isAmmoPart(obj) then
-						touchPart(obj, body)
-					end
-					if H.AutoPickup and (isHealthPart(obj) or isAmmoPart(obj) or string.find(string.lower(obj.Name), "pickup") or string.find(string.lower(obj.Name), "drop")) then
+				if dist < 60 then
+					local n = string.lower(obj.Name)
+					local isH = isHealthPart(obj)
+					local isA = isAmmoPart(obj)
+					if (needHeal and isH) or isA or n:find("pickup") or n:find("drop") then
 						touchPart(obj, body)
 					end
 				end
@@ -4523,7 +4584,7 @@ task.spawn(function()
 	RunService.Heartbeat:Connect(function()
 		sync()
 		if not H.AutoReload then return end
-		if tick() - lastReload < 0.35 then return end
+		if tick() - lastReload < 0.5 then return end
 
 		pcall(function()
 			-- need Utility / EnumLibrary / UseItem from hub
