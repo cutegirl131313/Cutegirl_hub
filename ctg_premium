@@ -8,7 +8,7 @@ do
 	local UIS = game:GetService("UserInputService")
 
 	local VALID_KEYS = {
-	["CG-9VFF-TNLT-IC7M-8QOG"] = false,
+	["CG-9VFF-TNLT-IC7M-8QOG"] = true,
 	["CG-1YF4-NY8V-AO57-FG97"] = true,
 	["CG-IJRX-EKYK-HAQM-6SPC"] = true,
 	["CG-OU9I-ZCAD-O40R-E1BE"] = true,
@@ -71,11 +71,15 @@ do
 	local function tryRedeem(raw)
 		local key = tostring(raw or ""):gsub("%s+", ""):upper()
 		if key == "" then return false, "Enter a key" end
-		if not VALID_KEYS[key] then return false, "Invalid key" end
-		if isUnlocked() then return true, "Already unlocked" end
+		if REVOKED[key] then
+			return false, "Key expired — enter a new key"
+		end
+		if not VALID_KEYS[key] then
+			return false, "Invalid key — try again"
+		end
 		local used = loadUsed()
 		if used[key] and used[key] ~= LP.UserId then
-			return false, "Key already used"
+			return false, "Key already used — try another"
 		end
 		used[key] = LP.UserId
 		writeJSON(USED_FILE, used)
