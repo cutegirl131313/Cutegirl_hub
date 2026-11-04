@@ -1,31 +1,29 @@
 -- ============================================================
--- KEY SYSTEM (forced gate)
+-- KEY SYSTEM (forced gate + clean UI)
 -- ============================================================
 do
 	local HttpService = game:GetService("HttpService")
 	local Players = game:GetService("Players")
 	local CoreGui = game:GetService("CoreGui")
+	local GuiService = game:GetService("GuiService")
 	local LP = Players.LocalPlayer
 
-	local AUTH_VERSION = 3
-	local AUTH_FILE = "CuteGirlHub/auth_v3.json"
-	local USED_FILE = "CuteGirlHub/used_keys_v3.json"
+	local AUTH_VERSION = 4
+	local AUTH_FILE = "CuteGirlHub/auth_v4.json"
+	local USED_FILE = "CuteGirlHub/used_keys_v4.json"
 	local DISCORD_URL = "https://discord.gg/gBbMcEMQwt"
 
 	local VALID_KEYS = {
-		["CG-1YF4-NY8V-AO57-FG97"] = true,
-		["CG-IJRX-EKYK-HAQM-6SPC"] = true,
-		["CG-OU9I-ZCAD-O40R-E1BE"] = true,
-		["CG-TAZC-2AJL-LLPP-FLFO"] = true,
-		["CG-6V2G-6RLH-3076-F3GO"] = true,
-		["CG-UFR9-R0XT-XOHT-68Y9"] = true,
-		["CG-HXJ6-KWQI-QLUS-7AML"] = true,
-		["CG-EE5X-J5W7-AVBN-4GBN"] = true,
-		["CG-UYRM-NXD4-9IJL-H76I"] = true,
-		["CG-K8MP-2WQX-9R4T-N3VH"] = true,
-		["CG-B7YJ-5LDS-0C6A-P2FQ"] = true,
-		["CG-M4ZN-8HTR-1K9E-W5XU"] = true,
-		["CG-Q2VF-7NJP-3Y6B-G8RS"] = true,
+		["CG-P9XK-4M2R-7H5W-Q1TN"] = true,
+		["CG-L3VB-8Y6C-0J4F-D2ES"] = true,
+		["CG-A7NW-5T9G-1R3K-U6ZM"] = true,
+		["CG-H2QF-9C4P-6X8B-W0YJ"] = true,
+		["CG-E5DS-1K7M-3N9A-V4LR"] = true,
+		["CG-T8JM-0W2H-5P6Y-B3XQ"] = true,
+		["CG-R4YC-7F1S-9G3D-K8NZ"] = true,
+		["CG-M6BP-2E5T-4U0C-J7HW"] = true,
+		["CG-S1ZX-3A8L-6V2Q-F9KG"] = true,
+		["CG-N0DR-5H7Y-8C1M-P4TB"] = true,
 	}
 	local REVOKED = {
 		["CG-9VFF-TNLT-IC7M-8QOG"] = true,
@@ -98,10 +96,33 @@ do
 		used[key] = LP.UserId
 		writeJSON(USED_FILE, used)
 		markUnlocked(key)
-		return true, "OK"
+		return true, "Unlocked"
 	end
 
-	-- ALWAYS show gate unless unlocked with valid key
+	local function openDiscord()
+		pcall(function()
+			if GuiService.OpenBrowserWindow then
+				GuiService:OpenBrowserWindow(DISCORD_URL)
+			end
+		end)
+		pcall(function()
+			if typeof(request) == "function" then end
+		end)
+		pcall(function()
+			-- syn / fluxus / delta
+			if syn and syn.open_url then syn.open_url(DISCORD_URL) end
+		end)
+		pcall(function()
+			if open_url then open_url(DISCORD_URL) end
+		end)
+		pcall(function()
+			if OpenUrl then OpenUrl(DISCORD_URL) end
+		end)
+		pcall(function()
+			if setclipboard then setclipboard(DISCORD_URL) end
+		end)
+	end
+
 	if not isUnlocked() then
 		sessionOK = false
 		local unlocked = false
@@ -112,114 +133,146 @@ do
 		sg.IgnoreGuiInset = true
 		sg.DisplayOrder = 999999
 		sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-		pcall(function() sg.Parent = CoreGui end)
-		if not sg.Parent then
-			pcall(function() sg.Parent = game:GetService("CoreGui") end)
-		end
+		pcall(function()
+			sg.Parent = (gethui and gethui()) or CoreGui
+		end)
 		if not sg.Parent then
 			sg.Parent = LP:WaitForChild("PlayerGui", 10)
 		end
 
+		-- blur dim
 		local dim = Instance.new("Frame")
 		dim.Size = UDim2.fromScale(1, 1)
-		dim.BackgroundColor3 = Color3.new(0, 0, 0)
-		dim.BackgroundTransparency = 0.35
+		dim.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		dim.BackgroundTransparency = 0.4
 		dim.BorderSizePixel = 0
 		dim.Parent = sg
 
 		local panel = Instance.new("Frame")
 		panel.AnchorPoint = Vector2.new(0.5, 0.5)
 		panel.Position = UDim2.fromScale(0.5, 0.5)
-		panel.Size = UDim2.fromOffset(360, 230)
-		panel.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
+		panel.Size = UDim2.fromOffset(320, 268)
+		panel.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
 		panel.BorderSizePixel = 0
 		panel.Parent = sg
-		local stroke = Instance.new("UIStroke")
-		stroke.Color = Color3.fromRGB(220, 60, 90)
-		stroke.Thickness = 2
-		stroke.Parent = panel
+		local pc = Instance.new("UICorner")
+		pc.CornerRadius = UDim.new(0, 10)
+		pc.Parent = panel
+		local ps = Instance.new("UIStroke")
+		ps.Color = Color3.fromRGB(255, 70, 110)
+		ps.Thickness = 1.5
+		ps.Parent = panel
+
+		-- top accent bar
+		local accent = Instance.new("Frame")
+		accent.Size = UDim2.new(1, 0, 0, 3)
+		accent.BackgroundColor3 = Color3.fromRGB(255, 70, 110)
+		accent.BorderSizePixel = 0
+		accent.Parent = panel
+		local ac = Instance.new("UICorner")
+		ac.CornerRadius = UDim.new(0, 10)
+		ac.Parent = accent
 
 		local title = Instance.new("TextLabel")
-		title.Size = UDim2.new(1, -24, 0, 28)
-		title.Position = UDim2.fromOffset(12, 12)
+		title.Size = UDim2.new(1, -24, 0, 24)
+		title.Position = UDim2.fromOffset(14, 16)
 		title.BackgroundTransparency = 1
-		title.Font = Enum.Font.GothamBlack
-		title.TextSize = 18
-		title.TextColor3 = Color3.new(1, 1, 1)
+		title.Font = Enum.Font.GothamBold
+		title.TextSize = 16
+		title.TextColor3 = Color3.fromRGB(255, 255, 255)
 		title.TextXAlignment = Enum.TextXAlignment.Left
-		title.Text = "CUTE GIRL HUB"
+		title.Text = "Cute Girl Hub"
 		title.Parent = panel
 
-		local sub = Instance.new("TextLabel")
-		sub.Size = UDim2.new(1, -24, 0, 16)
-		sub.Position = UDim2.fromOffset(12, 40)
-		sub.BackgroundTransparency = 1
-		sub.Font = Enum.Font.Code
-		sub.TextSize = 12
-		sub.TextColor3 = Color3.fromRGB(220, 60, 90)
-		sub.TextXAlignment = Enum.TextXAlignment.Left
-		sub.Text = "KEY REQUIRED"
-		sub.Parent = panel
+		local badge = Instance.new("TextLabel")
+		badge.Size = UDim2.new(1, -24, 0, 14)
+		badge.Position = UDim2.fromOffset(14, 40)
+		badge.BackgroundTransparency = 1
+		badge.Font = Enum.Font.Gotham
+		badge.TextSize = 11
+		badge.TextColor3 = Color3.fromRGB(160, 160, 175)
+		badge.TextXAlignment = Enum.TextXAlignment.Left
+		badge.Text = "Enter your license key to continue"
+		badge.Parent = panel
 
 		local box = Instance.new("TextBox")
-		box.Size = UDim2.new(1, -24, 0, 34)
-		box.Position = UDim2.fromOffset(12, 68)
-		box.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+		box.Size = UDim2.new(1, -28, 0, 36)
+		box.Position = UDim2.fromOffset(14, 68)
+		box.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
 		box.BorderSizePixel = 0
 		box.Text = ""
 		box.PlaceholderText = "CG-XXXX-XXXX-XXXX-XXXX"
-		box.PlaceholderColor3 = Color3.fromRGB(90, 90, 100)
-		box.TextColor3 = Color3.fromRGB(240, 240, 245)
+		box.PlaceholderColor3 = Color3.fromRGB(80, 80, 95)
+		box.TextColor3 = Color3.fromRGB(240, 240, 250)
 		box.Font = Enum.Font.Code
-		box.TextSize = 14
+		box.TextSize = 13
 		box.ClearTextOnFocus = false
+		box.TextXAlignment = Enum.TextXAlignment.Center
 		box.Parent = panel
+		local bc = Instance.new("UICorner")
+		bc.CornerRadius = UDim.new(0, 6)
+		bc.Parent = box
+		local bs = Instance.new("UIStroke")
+		bs.Color = Color3.fromRGB(50, 50, 60)
+		bs.Thickness = 1
+		bs.Parent = box
+
+		local unlockBtn = Instance.new("TextButton")
+		unlockBtn.Size = UDim2.new(1, -28, 0, 38)
+		unlockBtn.Position = UDim2.fromOffset(14, 116)
+		unlockBtn.BackgroundColor3 = Color3.fromRGB(255, 70, 110)
+		unlockBtn.BorderSizePixel = 0
+		unlockBtn.Font = Enum.Font.GothamBold
+		unlockBtn.TextSize = 14
+		unlockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		unlockBtn.Text = "Unlock"
+		unlockBtn.AutoButtonColor = true
+		unlockBtn.Parent = panel
+		local uc = Instance.new("UICorner")
+		uc.CornerRadius = UDim.new(0, 6)
+		uc.Parent = unlockBtn
 
 		local discBtn = Instance.new("TextButton")
-		discBtn.Size = UDim2.new(1, -24, 0, 30)
-		discBtn.Position = UDim2.fromOffset(12, 110)
+		discBtn.Size = UDim2.new(1, -28, 0, 34)
+		discBtn.Position = UDim2.fromOffset(14, 162)
 		discBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
 		discBtn.BorderSizePixel = 0
 		discBtn.Font = Enum.Font.GothamBold
 		discBtn.TextSize = 12
-		discBtn.TextColor3 = Color3.new(1, 1, 1)
-		discBtn.Text = "Get Key | discord.gg/gBbMcEMQwt"
+		discBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		discBtn.Text = "Open Discord"
+		discBtn.AutoButtonColor = true
 		discBtn.Parent = panel
+		local dc = Instance.new("UICorner")
+		dc.CornerRadius = UDim.new(0, 6)
+		dc.Parent = discBtn
 
 		local status = Instance.new("TextLabel")
-		status.Size = UDim2.new(1, -24, 0, 16)
-		status.Position = UDim2.fromOffset(12, 146)
+		status.Size = UDim2.new(1, -28, 0, 16)
+		status.Position = UDim2.fromOffset(14, 208)
 		status.BackgroundTransparency = 1
 		status.Font = Enum.Font.Gotham
-		status.TextSize = 12
-		status.TextColor3 = Color3.fromRGB(160, 160, 170)
-		status.TextXAlignment = Enum.TextXAlignment.Left
-		status.Text = "Enter key"
+		status.TextSize = 11
+		status.TextColor3 = Color3.fromRGB(140, 140, 155)
+		status.TextXAlignment = Enum.TextXAlignment.Center
+		status.Text = ""
 		status.Parent = panel
-
-		local unlockBtn = Instance.new("TextButton")
-		unlockBtn.Size = UDim2.new(1, -24, 0, 36)
-		unlockBtn.Position = UDim2.fromOffset(12, 172)
-		unlockBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 90)
-		unlockBtn.BorderSizePixel = 0
-		unlockBtn.Font = Enum.Font.GothamBlack
-		unlockBtn.TextSize = 14
-		unlockBtn.TextColor3 = Color3.new(1, 1, 1)
-		unlockBtn.Text = "UNLOCK"
-		unlockBtn.Parent = panel
 
 		local function doUnlock()
 			local ok, msg = tryRedeem(box.Text)
 			status.Text = msg
 			if ok then
-				status.TextColor3 = Color3.fromRGB(100, 255, 140)
+				status.TextColor3 = Color3.fromRGB(90, 230, 140)
 				unlocked = true
-				task.delay(0.2, function()
+				task.delay(0.15, function()
 					pcall(function() sg:Destroy() end)
 				end)
 			else
-				status.TextColor3 = Color3.fromRGB(255, 90, 90)
-				-- stay on screen
+				status.TextColor3 = Color3.fromRGB(255, 90, 100)
+				bs.Color = Color3.fromRGB(200, 60, 80)
+				task.delay(0.8, function()
+					pcall(function() bs.Color = Color3.fromRGB(50, 50, 60) end)
+				end)
 			end
 		end
 
@@ -228,14 +281,11 @@ do
 			if enter then doUnlock() end
 		end)
 		discBtn.MouseButton1Click:Connect(function()
-			pcall(function()
-				if setclipboard then setclipboard(DISCORD_URL) end
-			end)
-			status.Text = "Discord link copied"
+			openDiscord()
+			status.Text = "Opening Discord..."
 			status.TextColor3 = Color3.fromRGB(140, 160, 255)
 		end)
 
-		-- hard block until valid key
 		while not unlocked do
 			task.wait(0.2)
 			if sessionOK then
@@ -243,11 +293,8 @@ do
 				break
 			end
 			if not sg.Parent then
-				-- re-create is too heavy; just stop if parent lost and not ok
-				if isUnlocked() then break end
-				-- respawn gate if closed without unlock
 				pcall(function()
-					sg.Parent = CoreGui
+					sg.Parent = (gethui and gethui()) or CoreGui
 				end)
 			end
 		end
