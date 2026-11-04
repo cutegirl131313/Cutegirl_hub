@@ -1381,8 +1381,8 @@ do
 		Callback = function(v) _G.ZT = _G.ZT or {}; _G.ZT.LockEnabled = v end,
 	})
 	CombatBox:AddSlider("ZT_LockOffset", {
-		Text = "Lock Height (3=melee)",
-		Default = 3, Min = 0, Max = 30, Rounding = 1,
+		Text = "Lock Height",
+		Default = 12, Min = 1, Max = 30, Rounding = 1,
 		Callback = function(v) _G.ZT = _G.ZT or {}; _G.ZT.LockOffset = v end,
 	})
 	CombatBox:AddSlider("ZT_LockTol", {
@@ -5119,7 +5119,7 @@ task.spawn(function()
 		if c.FireRate == nil then c.FireRate = 0.05 end
 		if c.MaxDistance == nil then c.MaxDistance = 500 end
 		if c.LockEnabled == nil then c.LockEnabled = false end
-		if c.LockOffset == nil then c.LockOffset = 3 end
+		if c.LockOffset == nil then c.LockOffset = 12 end
 		if c.JitterEnabled == nil then c.JitterEnabled = false end
 		if c.JitterRadius == nil then c.JitterRadius = 14 end
 		if c.JitterInterval == nil then c.JitterInterval = 0.3 end
@@ -5330,7 +5330,10 @@ task.spawn(function()
 		-- compute server CF (lock / hide) — NOT what you see
 		local serverCF = RealCFrame
 		if C.LockEnabled then
-			local ideal = targetRoot.Position + Vector3.new(0, C.LockOffset or 3, 0)
+			local height = C.LockOffset or 12
+			-- stand slightly offset so not glued to head
+			local back = (targetRoot.CFrame.LookVector) * -4
+			local ideal = targetRoot.Position + Vector3.new(0, height, 0) + back
 			if C.JitterEnabled then ideal = ideal + currentJitterOffset end
 			serverCF = CFrame.new(ideal, targetHead.Position)
 		end
