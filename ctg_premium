@@ -2198,69 +2198,127 @@ task.spawn(function()
 		end
 
 		_halmu.startRage = function(on)
-			-- cleanup previous
 			if _halmu.rageConn then pcall(function() _halmu.rageConn:Disconnect() end) _halmu.rageConn = nil end
 			if _halmu.desyncHB then pcall(function() _halmu.desyncHB:Disconnect() end) _halmu.desyncHB = nil end
+			if _halmu.targetConn then pcall(function() _halmu.targetConn:Disconnect() end) _halmu.targetConn = nil end
 			pcall(function() RunService:UnbindFromRenderStep("HalmuDesyncRestore") end)
 			_halmu.RealCFrame = nil
 			_halmu.RealVelocity = nil
+			_halmu.currentTarget = nil
 			if not on then return end
+
+			-- ensure modules live
+			local function ensureModules()
+				if not FighterCtrl then
+					pcall(function()
+						FighterCtrl = require(LP.PlayerScripts.Controllers.FighterController)
+					end)
+				end
+				if not _ssEnum then
+					pcall(function()
+						if not EnumLib then
+							EnumLib = require(RS.Modules.EnumLibrary)
+						end
+						_ssEnum = EnumLib:ToEnum("StartShooting")
+					end)
+				end
+				if not _useItemRemote then
+					pcall(function()
+						_useItemRemote = RS.Remotes.Replication.Fighter.UseItem
+					end)
+				end
+			end
+			ensureModules()
+
+			local function resolveObjId()
+				ensureModules()
+				local lf = FighterCtrl and (FighterCtrl.LocalFighter or (FighterCtrl.GetFighter and FighterCtrl:GetFighter(LP)))
+				local item = lf and lf.EquippedItem
+				if not item then return nil end
+				local ok, id = pcall(function() return item:Get("ObjectID") end)
+				if ok and id then return id end
+				ok, id = pcall(function() return item.Data and item.Data.ObjectID end)
+				return ok and id or nil
+			end
+
+			local function getHead(char)
+				if not char then return nil end
+				return char:FindFirstChild("HitboxHead")
+					or char:FindFirstChild("HitboxHeadSmall")
+					or char:FindFirstChild("Head")
+					or char:FindFirstChild("HumanoidRootPart")
+			end
+
+			-- TARGET PICK (was missing — rage never locked anyone)
+			_halmu.targetConn = RunService.Heartbeat:Connect(function()
+				if not _halmu.rageEnabled then
+					_halmu.currentTarget = nil
+					return
+				end
+				local ref = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+				local refPos = ref and ref.Position or Vector3.zero
+				local closest, best = nil, math.huge
+				for _, plr in pairs(Players:GetPlayers()) do
+					if plr ~= LP and plr.Character and not _isSameTeam(plr) then
+						local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+						local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+						if hrp and hum and hum.Health > 0 then
+							local d = (refPos - hrp.Position).Magnitude
+							local score = d
+							if S.PrioritizeLowHP ~= false then
+								score = d * (0.35 + 0.65 * (hum.Health / math.max(hum.MaxHealth, 1)))
+							end
+							if score < best then
+								best = score
+								closest = plr
+							end
+						end
+					end
+				end
+				_halmu.currentTarget = closest and getHead(closest.Character) or nil
+			end)
 
 			local cachedId = nil
 			local lastShot = 0
 
-			-- MERGED RAGE FIRE: multi-shot + kicia frames + multi-origin + immunity spoof
+			-- FIRE
 			_halmu.rageConn = RunService.Heartbeat:Connect(function()
 				if not _halmu.rageEnabled then return end
-				if not _halmu.currentTarget or not _halmu.currentTarget.Parent then return end
-
 				local head = _halmu.currentTarget
+				if not head or not head.Parent then return end
+
 				local targetChar = head:FindFirstAncestorOfClass("Model") or head.Parent
 				local targetPlr = targetChar and Players:GetPlayerFromCharacter(targetChar)
-				if not targetPlr or targetPlr == LP then return end
-				if _isSameTeam(targetPlr) then return end
+				if targetPlr == LP then return end
+				if targetPlr and _isSameTeam(targetPlr) then return end
 
-				-- refresh head hitbox
-				if targetChar then
-					head = targetChar:FindFirstChild("HitboxHead")
-						or targetChar:FindFirstChild("HitboxHeadSmall")
-						or targetChar:FindFirstChild("Head")
-						or head
-					_halmu.currentTarget = head
+				head = getHead(targetChar) or head
+				_halmu.currentTarget = head
+
+				local objId = resolveObjId()
+				if objId then cachedId = objId else objId = cachedId end
+				if not objId then return end
+				if not _ssEnum or not _useItemRemote then
+					ensureModules()
+					if not _ssEnum or not _useItemRemote then return end
 				end
 
-				local objId = getObjId()
-				if objId then cachedId = objId else objId = cachedId end
-				if not objId or not _ssEnum then return end
-
-				-- immunity spoof (no wait)
+				-- immunity spoof
 				pcall(function()
 					local c = targetChar
 					if not c then return end
-					local hum = c:FindFirstChildOfClass("Humanoid")
 					pcall(function() c:SetAttribute("CanTakeDamage", true) end)
 					pcall(function() c:SetAttribute("Invulnerable", false) end)
-					pcall(function() c:SetAttribute("Invincibility", false) end)
 					pcall(function() c:SetAttribute("SpawnProtection", false) end)
 					pcall(function() c:SetAttribute("SpawnProtect", false) end)
-					pcall(function() c:SetAttribute("Protected", false) end)
 					pcall(function() c:SetAttribute("IsImmune", false) end)
 					pcall(function() c:SetAttribute("iFrame", false) end)
-					pcall(function() c:SetAttribute("IFrame", 0) end)
-					pcall(function() c:SetAttribute("SpawnGuard", 0) end)
-					if hum then
-						pcall(function() hum:SetAttribute("CanTakeDamage", true) end)
-						pcall(function() hum:SetAttribute("Invulnerable", false) end)
-					end
 					for _, d in ipairs(c:GetChildren()) do
 						if d:IsA("ForceField") then pcall(function() d:Destroy() end) end
 					end
 				end)
 
-				-- rate limit soft (still multi-packet)
-				local rate = 0.02
-				if S.RageStability then rate = math.max(0.01, tonumber(S.RageStability) or 0.02) end
-				if tick() - lastShot < rate then return end
+				if tick() - lastShot < 0.015 then return end
 				lastShot = tick()
 
 				local multi = math.clamp(tonumber(S.RageMulti) or 14, 4, 28)
@@ -2271,27 +2329,21 @@ task.spawn(function()
 				local camPos = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position or hp
 				local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
 				local myPos = myRoot and myRoot.Position or camPos
-
-				-- origins: head cluster + cam + root (all past versions merged)
 				local origins = {
 					hp,
 					hp + Vector3.new(0, 0.05, 0),
-					hp + Vector3.new(0, 0.12, 0),
-					hp + Vector3.new(0, 0.25, 0),
-					hp + Vector3.new(0, 0.4, 0),
+					hp + Vector3.new(0, 0.15, 0),
+					hp + Vector3.new(0, 0.3, 0),
 					hp + Vector3.new(0.1, 0.1, 0),
 					hp + Vector3.new(-0.1, 0.1, 0),
-					hp + Vector3.new(0.05, 0.2, 0.05),
-					hp + Vector3.new(-0.05, 0.2, -0.05),
-					hp + Vector3.new(0, 1.0, 0),
+					hp + Vector3.new(0, 0.5, 0),
 					camPos,
 					myPos + Vector3.new(0, 1.4, 0),
-					myPos + Vector3.new(0, 0.5, 0),
 				}
 
 				for frame = 1, frames do
-					for i = 1, multi do
-						local origin = origins[((i + frame - 2) % #origins) + 1]
+					for n = 1, multi do
+						local origin = origins[((n + frame - 2) % #origins) + 1]
 						pcall(function()
 							_useItemRemote:FireServer(objId, _ssEnum, buildShot(origin, head), nil)
 						end)
@@ -2299,9 +2351,13 @@ task.spawn(function()
 				end
 			end)
 
-			-- DESYNC (rage style): server above target, screen stays
+			-- DESYNC
 			_halmu.desyncHB = RunService.Heartbeat:Connect(function()
-				if not (_halmu.rageEnabled and S.Desync ~= false) then
+				if not _halmu.rageEnabled then
+					_halmu.RealCFrame = nil
+					return
+				end
+				if S.Desync == false then
 					_halmu.RealCFrame = nil
 					return
 				end
@@ -2319,7 +2375,7 @@ task.spawn(function()
 					_halmu.RealCFrame = _halmu.RealCFrame + hum.MoveDirection * (hum.WalkSpeed or 16) * (1 / 60)
 				end
 				local tp = _halmu.currentTarget.Position
-				local dist = _halmu.desyncDist or 3
+				local dist = tonumber(_halmu.desyncDist) or 3
 				hrp.CFrame = CFrame.new(tp + Vector3.new(0, dist, 0), tp)
 				hrp.AssemblyLinearVelocity = Vector3.zero
 			end)
