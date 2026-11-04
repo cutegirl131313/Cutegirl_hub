@@ -1381,8 +1381,8 @@ do
 		Callback = function(v) _G.ZT = _G.ZT or {}; _G.ZT.LockEnabled = v end,
 	})
 	CombatBox:AddSlider("ZT_LockOffset", {
-		Text = "Lock Height",
-		Default = 14.5, Min = 1, Max = 30, Rounding = 1,
+		Text = "Lock Height (3=melee)",
+		Default = 3, Min = 0, Max = 30, Rounding = 1,
 		Callback = function(v) _G.ZT = _G.ZT or {}; _G.ZT.LockOffset = v end,
 	})
 	CombatBox:AddSlider("ZT_LockTol", {
@@ -1466,7 +1466,7 @@ do
 		Default = true,
 		Callback = function(v) _G.ZT = _G.ZT or {}; _G.ZT.AntiSkel = v end,
 	})
-	MiscBox:AddLabel("Screen frozen (rage desync pulse)")
+	MiscBox:AddLabel("Camera freeze + body lock (fists)")
 end
 
 
@@ -5086,7 +5086,8 @@ end)
 
 
 
--- ========== Zombie Tower (screen frozen, server hit) ==========
+
+-- ========== Zombie Tower (camera freeze + real lock for hits) ==========
 task.spawn(function()
 	local cloneref = cloneref or clonereference or function(x) return x end
 	local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
@@ -5117,7 +5118,7 @@ task.spawn(function()
 		if c.FireRate == nil then c.FireRate = 0.05 end
 		if c.MaxDistance == nil then c.MaxDistance = 500 end
 		if c.LockEnabled == nil then c.LockEnabled = false end
-		if c.LockOffset == nil then c.LockOffset = 14.5 end
+		if c.LockOffset == nil then c.LockOffset = 3 end -- closer for melee
 		if c.LockTolerance == nil then c.LockTolerance = 0.1 end
 		if c.JitterEnabled == nil then c.JitterEnabled = false end
 		if c.JitterRadius == nil then c.JitterRadius = 14.0 end
@@ -5138,7 +5139,53 @@ task.spawn(function()
 	local lastFire, lastJitter, lastCollect = 0, 0, 0
 	local currentJitterOffset = Vector3.zero
 	local hidePhase, phaseStart = "hit", tick()
-	local hideServerCF = nil
+	local hideOffset = nil
+
+	-- CAMERA FREEZE (screen never follows body)
+	local camFrozen = false
+	local frozenCamCF = nil
+	local prevCamType = nil
+	local function freezeCam(on)
+		local cam = Workspace.CurrentCamera
+		if not cam then return end
+		if on then
+			if not camFrozen then
+				prevCamType = cam.CameraType
+				frozenCamCF = cam.CFrame
+				camFrozen = true
+			end
+			pcall(function()
+				cam.CameraType = Enum.CameraType.Scriptable
+				if frozenCamCF then cam.CFrame = frozenCamCF end
+			end)
+		else
+			if camFrozen then
+				pcall(function()
+					cam.CameraType = prevCamType or Enum.CameraType.Custom
+					local hum = lplr.Character and lplr.Character:FindFirstChildOfClass("Humanoid")
+					if hum then cam.CameraSubject = hum end
+				end)
+			end
+			camFrozen = false
+			frozenCamCF = nil
+		end
+	end
+
+	-- keep camera fixed every frame while ZT active with lock/hide
+	RunService.RenderStepped:Connect(function()
+		local C = cfg()
+		local need = C.Enabled and (C.LockEnabled or C.HideEnabled)
+		if need then
+			if not camFrozen then freezeCam(true) end
+			local cam = Workspace.CurrentCamera
+			if cam and frozenCamCF then
+				cam.CameraType = Enum.CameraType.Scriptable
+				cam.CFrame = frozenCamCF
+			end
+		else
+			if camFrozen then freezeCam(false) end
+		end
+	end)
 
 	local function getClosestTarget()
 		local C = cfg()
@@ -5203,7 +5250,6 @@ task.spawn(function()
 		end
 	end
 
-	-- anti skel (no move)
 	local skelWords = { "skel", "bone", "skull", "grenade", "explod", "bomb", "rocket", "projectile", "throw", "orb", "blast" }
 	local function isDangerName(n)
 		n = string.lower(tostring(n or ""))
@@ -5219,7 +5265,7 @@ task.spawn(function()
 		if not hrp then return end
 		local pos = hrp.Position
 		for _, obj in ipairs(Workspace:GetChildren()) do
-			if isDangerName(obj.Name) and obj:IsA("BasePart") and (obj.Position - pos).Magnitude < 45 then
+			if isDangerName(obj.Name) and obj:IsA("BasePart") and (obj.Position - pos).Magnitude < 50 then
 				pcall(function()
 					obj.CanTouch = false
 					obj.CanQuery = false
@@ -5230,7 +5276,7 @@ task.spawn(function()
 				for _, c in ipairs(obj:GetChildren()) do
 					if isDangerName(c.Name) or isDangerName(obj.Name) then
 						local p = c:IsA("BasePart") and c or c:FindFirstChildWhichIsA("BasePart")
-						if p and (p.Position - pos).Magnitude < 45 then
+						if p and (p.Position - pos).Magnitude < 50 then
 							pcall(function()
 								if c:IsA("BasePart") then
 									c.CanTouch = false
@@ -5252,64 +5298,54 @@ task.spawn(function()
 		end
 	end)
 
-	--[[
-		Rage-style: one heartbeat pulse
-		1) save real CF (screen)
-		2) set CF to hit pos (server)
-		3) fire
-		4) restore CF immediately → screen never moves
-	]]
-	local function pulseAt(myRoot, destCF, fireFn)
-		local realCF = myRoot.CFrame
-		local realVel = myRoot.AssemblyLinearVelocity
-		myRoot.CFrame = destCF
-		myRoot.AssemblyLinearVelocity = Vector3.zero
-		pcall(fireFn)
-		myRoot.CFrame = realCF
-		myRoot.AssemblyLinearVelocity = realVel
-	end
-
-	local function fireAtHead(localFighter, targetHead, originPos)
-		local aimCF = CFrame.lookAt(originPos, targetHead.Position)
-		local targetCF = targetHead.CFrame
-		local off = Vector3.new((math.random() - 0.5) * 0.02, (math.random() - 0.5) * 0.02, (math.random() - 0.5) * 0.02)
-		local objSpace = targetHead.CFrame:ToObjectSpace(CFrame.new(targetHead.Position + off))
-		local cameradata = {
-			[utf8.char(1)] = {
-				[utf8.char(0)] = util:EncodeCFrame(aimCF),
-				[utf8.char(1)] = util:EncodeCFrame(targetCF),
-				[utf8.char(2)] = targetHead,
-				[utf8.char(3)] = util:EncodeCFrame(objSpace),
-			},
+	local function fireShots(localFighter, targetHead, myRoot)
+		local origins = {
+			targetHead.Position + Vector3.new(0, 0.2, 0),
+			targetHead.Position + Vector3.new(0, 0.5, 0),
+			targetHead.Position + Vector3.new(0, 1.0, 0),
+			myRoot.Position + Vector3.new(0, 1.0, 0),
+			targetHead.Position,
 		}
-		ReplicatedStorage.Remotes.Replication.Fighter.UseItem:FireServer(
-			localFighter.EquippedItem:Get("ObjectID"),
-			enum:ToEnum("StartShooting"),
-			cameradata,
-			nil
-		)
+		for _, originPos in ipairs(origins) do
+			local aimCF = CFrame.lookAt(originPos, targetHead.Position)
+			local targetCF = targetHead.CFrame
+			local off = Vector3.new((math.random() - 0.5) * 0.01, (math.random() - 0.5) * 0.01, (math.random() - 0.5) * 0.01)
+			local objSpace = targetHead.CFrame:ToObjectSpace(CFrame.new(targetHead.Position + off))
+			local cameradata = {
+				[utf8.char(1)] = {
+					[utf8.char(0)] = util:EncodeCFrame(aimCF),
+					[utf8.char(1)] = util:EncodeCFrame(targetCF),
+					[utf8.char(2)] = targetHead,
+					[utf8.char(3)] = util:EncodeCFrame(objSpace),
+				},
+			}
+			pcall(function()
+				ReplicatedStorage.Remotes.Replication.Fighter.UseItem:FireServer(
+					localFighter.EquippedItem:Get("ObjectID"),
+					enum:ToEnum("StartShooting"),
+					cameradata,
+					nil
+				)
+			end)
+		end
 	end
 
 	RunService.Heartbeat:Connect(function()
 		local C = cfg()
-		if not C.Enabled then return end
+		if not C.Enabled then
+			if camFrozen and not (C.LockEnabled or C.HideEnabled) then freezeCam(false) end
+			return
+		end
 
 		doCollect()
 
 		local char = lplr.Character
 		local myRoot = char and char:FindFirstChild("HumanoidRootPart")
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
-		if not char or not myRoot or not hum or hum.Health <= 0 then
-			hidePhase = "hit"
-			phaseStart = tick()
-			hideServerCF = nil
-			return
-		end
+		if not char or not myRoot or not hum or hum.Health <= 0 then return end
 
 		local targetModel, targetRoot, targetHead = getClosestTarget()
-		if not targetModel or not targetHead or not targetRoot then
-			return
-		end
+		if not targetModel or not targetHead or not targetRoot then return end
 
 		local localFighter = FighterController.LocalFighter
 		if not localFighter or not localFighter.EquippedItem then return end
@@ -5318,64 +5354,49 @@ task.spawn(function()
 			updateJitter(targetRoot)
 		end
 
-		-- where server should be this tick
-		local serverCF = myRoot.CFrame
+		-- BODY goes to target (needed for fist range on server)
+		-- CAMERA stays frozen (screen still)
 		if C.LockEnabled then
-			local idealPos = targetRoot.Position + Vector3.new(0, C.LockOffset or 14.5, 0)
-			if C.JitterEnabled then
-				idealPos = idealPos + currentJitterOffset
-			end
-			serverCF = CFrame.new(idealPos)
+			if not camFrozen then freezeCam(true) end
+			local height = C.LockOffset or 3
+			local idealPos = targetRoot.Position + Vector3.new(0, height, 0)
+			if C.JitterEnabled then idealPos = idealPos + currentJitterOffset end
+			myRoot.CFrame = CFrame.new(idealPos, targetHead.Position)
+			myRoot.AssemblyLinearVelocity = Vector3.zero
+			pcall(function() hum.PlatformStand = true end)
+		else
+			pcall(function() hum.PlatformStand = false end)
 		end
 
-		-- hide phase: alternate server side offset
 		if C.HideEnabled then
+			if not camFrozen then freezeCam(true) end
 			local now = tick()
 			if hidePhase == "hit" then
 				if now - phaseStart >= (C.HitTime or 0.35) then
 					local sign = (math.random() < 0.5) and -1 or 1
-					local base = serverCF.Position
-					hideServerCF = CFrame.new(base + Vector3.new(sign * (C.HideDistance or 100), 0, 0))
+					hideOffset = Vector3.new(sign * (C.HideDistance or 100), 0, 0)
 					hidePhase = "hide"
 					phaseStart = now
 				end
 			else
-				if hideServerCF then
-					serverCF = hideServerCF
+				if hideOffset then
+					myRoot.CFrame = CFrame.new(myRoot.Position + hideOffset * 0.02)
 				end
 				if now - phaseStart >= (C.HideTime or 0.35) then
-					hideServerCF = nil
+					hideOffset = nil
 					hidePhase = "hit"
 					phaseStart = now
 				end
 			end
-		else
-			hidePhase = "hit"
-			hideServerCF = nil
 		end
 
-		if tick() - lastFire < C.FireRate then
-			-- still pulse lock position for server presence without leaving screen
-			if C.LockEnabled or (C.HideEnabled and hidePhase == "hide") then
-				pulseAt(myRoot, serverCF, function() end)
-			end
-			return
-		end
+		if tick() - lastFire < C.FireRate then return end
 		lastFire = tick()
-
-		-- origin for melee/gun: near head (hits with fists)
-		local originNear = targetHead.Position + Vector3.new(0, 0.5, 0)
-		local originLock = serverCF.Position
-
-		pulseAt(myRoot, serverCF, function()
-			-- multiple origins so fist + gun both register
-			pcall(fireAtHead, localFighter, targetHead, originNear)
-			pcall(fireAtHead, localFighter, targetHead, originLock)
-			pcall(fireAtHead, localFighter, targetHead, targetHead.Position + Vector3.new(0, 1, 0))
-		end)
+		fireShots(localFighter, targetHead, myRoot)
 	end)
 
-	print("[CuteGirl] Zombie Tower: frozen screen pulse desync")
+	print("[CuteGirl] Zombie Tower: camera frozen, body locks for melee")
 end)
+
 
 
