@@ -1,16 +1,18 @@
 -- ============================================================
--- KEY SYSTEM (forced gate + clean UI)
+-- KEY SYSTEM + INTRO
 -- ============================================================
 do
 	local HttpService = game:GetService("HttpService")
 	local Players = game:GetService("Players")
 	local CoreGui = game:GetService("CoreGui")
+	local TweenService = game:GetService("TweenService")
 	local GuiService = game:GetService("GuiService")
+	local RunService = game:GetService("RunService")
 	local LP = Players.LocalPlayer
 
-	local AUTH_VERSION = 4
-	local AUTH_FILE = "CuteGirlHub/auth_v4.json"
-	local USED_FILE = "CuteGirlHub/used_keys_v4.json"
+	local AUTH_VERSION = 5
+	local AUTH_FILE = "CuteGirlHub/auth_v5.json"
+	local USED_FILE = "CuteGirlHub/used_keys_v5.json"
 	local DISCORD_URL = "https://discord.gg/gBbMcEMQwt"
 
 	local VALID_KEYS = {
@@ -25,11 +27,21 @@ do
 		["CG-S1ZX-3A8L-6V2Q-F9KG"] = true,
 		["CG-N0DR-5H7Y-8C1M-P4TB"] = true,
 	}
-	local REVOKED = {
-		["CG-9VFF-TNLT-IC7M-8QOG"] = true,
-	}
+	local REVOKED = { ["CG-9VFF-TNLT-IC7M-8QOG"] = true }
 
 	local sessionOK = false
+
+	local function parentGui(sg)
+		pcall(function()
+			sg.Parent = (gethui and gethui()) or CoreGui
+		end)
+		if not sg.Parent then
+			pcall(function() sg.Parent = CoreGui end)
+		end
+		if not sg.Parent then
+			sg.Parent = LP:WaitForChild("PlayerGui", 10)
+		end
+	end
 
 	local function ensureFolder()
 		pcall(function()
@@ -50,9 +62,7 @@ do
 	local function writeJSON(path, tbl)
 		pcall(function()
 			ensureFolder()
-			if writefile then
-				writefile(path, HttpService:JSONEncode(tbl))
-			end
+			if writefile then writefile(path, HttpService:JSONEncode(tbl)) end
 		end)
 	end
 
@@ -101,28 +111,80 @@ do
 
 	local function openDiscord()
 		pcall(function()
-			if GuiService.OpenBrowserWindow then
-				GuiService:OpenBrowserWindow(DISCORD_URL)
-			end
+			if GuiService.OpenBrowserWindow then GuiService:OpenBrowserWindow(DISCORD_URL) end
 		end)
-		pcall(function()
-			if typeof(request) == "function" then end
-		end)
-		pcall(function()
-			-- syn / fluxus / delta
-			if syn and syn.open_url then syn.open_url(DISCORD_URL) end
-		end)
-		pcall(function()
-			if open_url then open_url(DISCORD_URL) end
-		end)
-		pcall(function()
-			if OpenUrl then OpenUrl(DISCORD_URL) end
-		end)
-		pcall(function()
-			if setclipboard then setclipboard(DISCORD_URL) end
-		end)
+		pcall(function() if syn and syn.open_url then syn.open_url(DISCORD_URL) end end)
+		pcall(function() if open_url then open_url(DISCORD_URL) end end)
+		pcall(function() if OpenUrl then OpenUrl(DISCORD_URL) end end)
+		pcall(function() if setclipboard then setclipboard(DISCORD_URL) end end)
 	end
 
+	-- ===== INTRO =====
+	do
+		local intro = Instance.new("ScreenGui")
+		intro.Name = "CuteGirlIntro"
+		intro.ResetOnSpawn = false
+		intro.IgnoreGuiInset = true
+		intro.DisplayOrder = 1000000
+		intro.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		parentGui(intro)
+
+		local bg = Instance.new("Frame")
+		bg.Size = UDim2.fromScale(1, 1)
+		bg.BackgroundColor3 = Color3.fromRGB(8, 8, 12)
+		bg.BorderSizePixel = 0
+		bg.Parent = intro
+
+		local line = Instance.new("Frame")
+		line.AnchorPoint = Vector2.new(0.5, 0.5)
+		line.Position = UDim2.fromScale(0.5, 0.5)
+		line.Size = UDim2.fromOffset(0, 2)
+		line.BackgroundColor3 = Color3.fromRGB(255, 70, 110)
+		line.BorderSizePixel = 0
+		line.Parent = intro
+
+		local main = Instance.new("TextLabel")
+		main.AnchorPoint = Vector2.new(0.5, 0.5)
+		main.Position = UDim2.fromScale(0.5, 0.46)
+		main.Size = UDim2.fromOffset(400, 48)
+		main.BackgroundTransparency = 1
+		main.Font = Enum.Font.GothamBlack
+		main.TextSize = 36
+		main.TextColor3 = Color3.fromRGB(255, 255, 255)
+		main.TextTransparency = 1
+		main.Text = "CUTE GIRL"
+		main.Parent = intro
+
+		local sub = Instance.new("TextLabel")
+		sub.AnchorPoint = Vector2.new(0.5, 0.5)
+		sub.Position = UDim2.fromScale(0.5, 0.54)
+		sub.Size = UDim2.fromOffset(300, 22)
+		sub.BackgroundTransparency = 1
+		sub.Font = Enum.Font.Code
+		sub.TextSize = 14
+		sub.TextColor3 = Color3.fromRGB(255, 70, 110)
+		sub.TextTransparency = 1
+		sub.Text = "HUB  ·  PREMIUM"
+		sub.Parent = intro
+
+		pcall(function()
+			TweenService:Create(line, TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+				Size = UDim2.fromOffset(180, 2),
+			}):Play()
+			task.wait(0.2)
+			TweenService:Create(main, TweenInfo.new(0.4), { TextTransparency = 0 }):Play()
+			TweenService:Create(sub, TweenInfo.new(0.45), { TextTransparency = 0 }):Play()
+			task.wait(0.85)
+			TweenService:Create(main, TweenInfo.new(0.3), { TextTransparency = 1 }):Play()
+			TweenService:Create(sub, TweenInfo.new(0.3), { TextTransparency = 1 }):Play()
+			TweenService:Create(line, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
+			TweenService:Create(bg, TweenInfo.new(0.35), { BackgroundTransparency = 1 }):Play()
+			task.wait(0.4)
+		end)
+		pcall(function() intro:Destroy() end)
+	end
+
+	-- ===== KEY GATE =====
 	if not isUnlocked() then
 		sessionOK = false
 		local unlocked = false
@@ -133,169 +195,139 @@ do
 		sg.IgnoreGuiInset = true
 		sg.DisplayOrder = 999999
 		sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-		pcall(function()
-			sg.Parent = (gethui and gethui()) or CoreGui
-		end)
-		if not sg.Parent then
-			sg.Parent = LP:WaitForChild("PlayerGui", 10)
-		end
+		parentGui(sg)
 
-		-- blur dim
 		local dim = Instance.new("Frame")
 		dim.Size = UDim2.fromScale(1, 1)
 		dim.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-		dim.BackgroundTransparency = 0.4
+		dim.BackgroundTransparency = 0.45
 		dim.BorderSizePixel = 0
 		dim.Parent = sg
 
 		local panel = Instance.new("Frame")
 		panel.AnchorPoint = Vector2.new(0.5, 0.5)
 		panel.Position = UDim2.fromScale(0.5, 0.5)
-		panel.Size = UDim2.fromOffset(320, 268)
-		panel.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
+		panel.Size = UDim2.fromOffset(340, 280)
+		panel.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
 		panel.BorderSizePixel = 0
 		panel.Parent = sg
-		local pc = Instance.new("UICorner")
-		pc.CornerRadius = UDim.new(0, 10)
-		pc.Parent = panel
+		Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 12)
 		local ps = Instance.new("UIStroke")
 		ps.Color = Color3.fromRGB(255, 70, 110)
 		ps.Thickness = 1.5
 		ps.Parent = panel
 
-		-- top accent bar
-		local accent = Instance.new("Frame")
-		accent.Size = UDim2.new(1, 0, 0, 3)
-		accent.BackgroundColor3 = Color3.fromRGB(255, 70, 110)
-		accent.BorderSizePixel = 0
-		accent.Parent = panel
-		local ac = Instance.new("UICorner")
-		ac.CornerRadius = UDim.new(0, 10)
-		ac.Parent = accent
+		local top = Instance.new("Frame")
+		top.Size = UDim2.new(1, 0, 0, 4)
+		top.BackgroundColor3 = Color3.fromRGB(255, 70, 110)
+		top.BorderSizePixel = 0
+		top.Parent = panel
+		Instance.new("UICorner", top).CornerRadius = UDim.new(0, 12)
 
 		local title = Instance.new("TextLabel")
-		title.Size = UDim2.new(1, -24, 0, 24)
-		title.Position = UDim2.fromOffset(14, 16)
+		title.Size = UDim2.new(1, -28, 0, 26)
+		title.Position = UDim2.fromOffset(16, 18)
 		title.BackgroundTransparency = 1
-		title.Font = Enum.Font.GothamBold
-		title.TextSize = 16
-		title.TextColor3 = Color3.fromRGB(255, 255, 255)
+		title.Font = Enum.Font.GothamBlack
+		title.TextSize = 18
+		title.TextColor3 = Color3.new(1, 1, 1)
 		title.TextXAlignment = Enum.TextXAlignment.Left
 		title.Text = "Cute Girl Hub"
 		title.Parent = panel
 
 		local badge = Instance.new("TextLabel")
-		badge.Size = UDim2.new(1, -24, 0, 14)
-		badge.Position = UDim2.fromOffset(14, 40)
+		badge.Size = UDim2.new(1, -28, 0, 16)
+		badge.Position = UDim2.fromOffset(16, 44)
 		badge.BackgroundTransparency = 1
 		badge.Font = Enum.Font.Gotham
-		badge.TextSize = 11
-		badge.TextColor3 = Color3.fromRGB(160, 160, 175)
+		badge.TextSize = 12
+		badge.TextColor3 = Color3.fromRGB(255, 70, 110)
 		badge.TextXAlignment = Enum.TextXAlignment.Left
-		badge.Text = "Enter your license key to continue"
+		badge.Text = "LICENSE KEY"
 		badge.Parent = panel
 
 		local box = Instance.new("TextBox")
-		box.Size = UDim2.new(1, -28, 0, 36)
-		box.Position = UDim2.fromOffset(14, 68)
-		box.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+		box.Size = UDim2.new(1, -32, 0, 38)
+		box.Position = UDim2.fromOffset(16, 72)
+		box.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
 		box.BorderSizePixel = 0
 		box.Text = ""
 		box.PlaceholderText = "CG-XXXX-XXXX-XXXX-XXXX"
-		box.PlaceholderColor3 = Color3.fromRGB(80, 80, 95)
-		box.TextColor3 = Color3.fromRGB(240, 240, 250)
+		box.PlaceholderColor3 = Color3.fromRGB(85, 85, 100)
+		box.TextColor3 = Color3.fromRGB(245, 245, 250)
 		box.Font = Enum.Font.Code
 		box.TextSize = 13
-		box.ClearTextOnFocus = false
 		box.TextXAlignment = Enum.TextXAlignment.Center
+		box.ClearTextOnFocus = false
 		box.Parent = panel
-		local bc = Instance.new("UICorner")
-		bc.CornerRadius = UDim.new(0, 6)
-		bc.Parent = box
+		Instance.new("UICorner", box).CornerRadius = UDim.new(0, 8)
 		local bs = Instance.new("UIStroke")
-		bs.Color = Color3.fromRGB(50, 50, 60)
+		bs.Color = Color3.fromRGB(55, 55, 65)
 		bs.Thickness = 1
 		bs.Parent = box
 
 		local unlockBtn = Instance.new("TextButton")
-		unlockBtn.Size = UDim2.new(1, -28, 0, 38)
-		unlockBtn.Position = UDim2.fromOffset(14, 116)
+		unlockBtn.Size = UDim2.new(1, -32, 0, 40)
+		unlockBtn.Position = UDim2.fromOffset(16, 122)
 		unlockBtn.BackgroundColor3 = Color3.fromRGB(255, 70, 110)
 		unlockBtn.BorderSizePixel = 0
 		unlockBtn.Font = Enum.Font.GothamBold
 		unlockBtn.TextSize = 14
-		unlockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-		unlockBtn.Text = "Unlock"
-		unlockBtn.AutoButtonColor = true
+		unlockBtn.TextColor3 = Color3.new(1, 1, 1)
+		unlockBtn.Text = "UNLOCK"
 		unlockBtn.Parent = panel
-		local uc = Instance.new("UICorner")
-		uc.CornerRadius = UDim.new(0, 6)
-		uc.Parent = unlockBtn
+		Instance.new("UICorner", unlockBtn).CornerRadius = UDim.new(0, 8)
 
 		local discBtn = Instance.new("TextButton")
-		discBtn.Size = UDim2.new(1, -28, 0, 34)
-		discBtn.Position = UDim2.fromOffset(14, 162)
+		discBtn.Size = UDim2.new(1, -32, 0, 36)
+		discBtn.Position = UDim2.fromOffset(16, 170)
 		discBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
 		discBtn.BorderSizePixel = 0
 		discBtn.Font = Enum.Font.GothamBold
 		discBtn.TextSize = 12
-		discBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		discBtn.TextColor3 = Color3.new(1, 1, 1)
 		discBtn.Text = "Open Discord"
-		discBtn.AutoButtonColor = true
 		discBtn.Parent = panel
-		local dc = Instance.new("UICorner")
-		dc.CornerRadius = UDim.new(0, 6)
-		dc.Parent = discBtn
+		Instance.new("UICorner", discBtn).CornerRadius = UDim.new(0, 8)
 
 		local status = Instance.new("TextLabel")
-		status.Size = UDim2.new(1, -28, 0, 16)
-		status.Position = UDim2.fromOffset(14, 208)
+		status.Size = UDim2.new(1, -32, 0, 18)
+		status.Position = UDim2.fromOffset(16, 218)
 		status.BackgroundTransparency = 1
 		status.Font = Enum.Font.Gotham
-		status.TextSize = 11
-		status.TextColor3 = Color3.fromRGB(140, 140, 155)
+		status.TextSize = 12
+		status.TextColor3 = Color3.fromRGB(150, 150, 165)
 		status.TextXAlignment = Enum.TextXAlignment.Center
-		status.Text = ""
+		status.Text = "Enter key to continue"
 		status.Parent = panel
 
 		local function doUnlock()
 			local ok, msg = tryRedeem(box.Text)
 			status.Text = msg
 			if ok then
-				status.TextColor3 = Color3.fromRGB(90, 230, 140)
+				status.TextColor3 = Color3.fromRGB(100, 240, 150)
 				unlocked = true
-				task.delay(0.15, function()
-					pcall(function() sg:Destroy() end)
-				end)
+				task.delay(0.15, function() pcall(function() sg:Destroy() end) end)
 			else
 				status.TextColor3 = Color3.fromRGB(255, 90, 100)
 				bs.Color = Color3.fromRGB(200, 60, 80)
-				task.delay(0.8, function()
-					pcall(function() bs.Color = Color3.fromRGB(50, 50, 60) end)
-				end)
+				task.delay(0.7, function() pcall(function() bs.Color = Color3.fromRGB(55, 55, 65) end) end)
 			end
 		end
 
 		unlockBtn.MouseButton1Click:Connect(doUnlock)
-		box.FocusLost:Connect(function(enter)
-			if enter then doUnlock() end
-		end)
+		box.FocusLost:Connect(function(e) if e then doUnlock() end end)
 		discBtn.MouseButton1Click:Connect(function()
 			openDiscord()
 			status.Text = "Opening Discord..."
-			status.TextColor3 = Color3.fromRGB(140, 160, 255)
+			status.TextColor3 = Color3.fromRGB(150, 170, 255)
 		end)
 
 		while not unlocked do
 			task.wait(0.2)
-			if sessionOK then
-				unlocked = true
-				break
-			end
+			if sessionOK then unlocked = true break end
 			if not sg.Parent then
-				pcall(function()
-					sg.Parent = (gethui and gethui()) or CoreGui
-				end)
+				pcall(function() parentGui(sg) end)
 			end
 		end
 		pcall(function() sg:Destroy() end)
@@ -306,7 +338,6 @@ do
 	end
 end
 
--- ============================================================
 -- MAIN HUB
 -- ============================================================
 -- Cute Girl Hub (Full Fixed Script - Shooting Range & Stability Fix)
@@ -2152,8 +2183,8 @@ task.spawn(function()
 						end
 					end
 				end)
-				local multi = math.clamp(tonumber(S.RageMulti) or 8, 3, 16)
-				if S.RageBoost ~= false then multi = math.max(multi, 8) end
+				local multi = math.clamp(tonumber(S.RageMulti) or 14, 6, 24)
+				if S.RageBoost ~= false then multi = math.max(multi, 12) end
 				local hp = head.Position
 				local camPos = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position or hp
 				local origins = {
