@@ -97,49 +97,96 @@ do
 		pcall(function() if setclipboard then setclipboard(DISCORD_URL) end end)
 	end
 
-	-- minimal intro
+	-- intro
 	do
+		local TweenService = game:GetService("TweenService")
 		local intro = Instance.new("ScreenGui")
 		intro.Name = "CuteGirlIntro"
 		intro.ResetOnSpawn = false
 		intro.IgnoreGuiInset = true
 		intro.DisplayOrder = 1000000
+		intro.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 		parentGui(intro)
+
 		local bg = Instance.new("Frame")
 		bg.Size = UDim2.fromScale(1, 1)
-		bg.BackgroundColor3 = Color3.fromRGB(6, 6, 8)
+		bg.BackgroundColor3 = Color3.fromRGB(5, 5, 7)
 		bg.BorderSizePixel = 0
 		bg.Parent = intro
-		local t1 = Instance.new("TextLabel")
-		t1.AnchorPoint = Vector2.new(0.5, 0.5)
-		t1.Position = UDim2.fromScale(0.5, 0.48)
-		t1.Size = UDim2.fromOffset(420, 40)
-		t1.BackgroundTransparency = 1
-		t1.Font = Enum.Font.Code
-		t1.TextSize = 28
-		t1.TextColor3 = Color3.fromRGB(255, 255, 255)
-		t1.TextTransparency = 1
-		t1.Text = "CUTE GIRL HUB"
-		t1.Parent = intro
-		local t2 = Instance.new("TextLabel")
-		t2.AnchorPoint = Vector2.new(0.5, 0.5)
-		t2.Position = UDim2.fromScale(0.5, 0.54)
-		t2.Size = UDim2.fromOffset(200, 16)
-		t2.BackgroundTransparency = 1
-		t2.Font = Enum.Font.Code
-		t2.TextSize = 11
-		t2.TextColor3 = Color3.fromRGB(255, 70, 110)
-		t2.TextTransparency = 1
-		t2.Text = "premium"
-		t2.Parent = intro
+
+		-- thin top bar
+		local bar = Instance.new("Frame")
+		bar.AnchorPoint = Vector2.new(0.5, 0)
+		bar.Position = UDim2.new(0.5, 0, 0, 0)
+		bar.Size = UDim2.new(0, 0, 0, 2)
+		bar.BackgroundColor3 = Color3.fromRGB(255, 72, 110)
+		bar.BorderSizePixel = 0
+		bar.Parent = intro
+
+		local brand = Instance.new("TextLabel")
+		brand.AnchorPoint = Vector2.new(0.5, 0.5)
+		brand.Position = UDim2.fromScale(0.5, 0.47)
+		brand.Size = UDim2.fromOffset(480, 36)
+		brand.BackgroundTransparency = 1
+		brand.Font = Enum.Font.Code
+		brand.TextSize = 22
+		brand.TextColor3 = Color3.fromRGB(245, 245, 248)
+		brand.TextTransparency = 1
+		brand.Text = "cute girl"
+		brand.Parent = intro
+
+		local sub = Instance.new("TextLabel")
+		sub.AnchorPoint = Vector2.new(0.5, 0.5)
+		sub.Position = UDim2.fromScale(0.5, 0.52)
+		sub.Size = UDim2.fromOffset(280, 18)
+		sub.BackgroundTransparency = 1
+		sub.Font = Enum.Font.Code
+		sub.TextSize = 11
+		sub.TextColor3 = Color3.fromRGB(255, 72, 110)
+		sub.TextTransparency = 1
+		sub.Text = "premium  ·  loaded"
+		sub.Parent = intro
+
+		local line = Instance.new("Frame")
+		line.AnchorPoint = Vector2.new(0.5, 0.5)
+		line.Position = UDim2.fromScale(0.5, 0.555)
+		line.Size = UDim2.fromOffset(0, 1)
+		line.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
+		line.BorderSizePixel = 0
+		line.Parent = intro
+
+		local tag = Instance.new("TextLabel")
+		tag.AnchorPoint = Vector2.new(0.5, 1)
+		tag.Position = UDim2.new(0.5, 0, 1, -18)
+		tag.Size = UDim2.fromOffset(200, 14)
+		tag.BackgroundTransparency = 1
+		tag.Font = Enum.Font.Code
+		tag.TextSize = 10
+		tag.TextColor3 = Color3.fromRGB(70, 70, 80)
+		tag.TextTransparency = 1
+		tag.Text = "cg"
+		tag.Parent = intro
+
 		pcall(function()
-			TweenService:Create(t1, TweenInfo.new(0.35), { TextTransparency = 0 }):Play()
-			TweenService:Create(t2, TweenInfo.new(0.4), { TextTransparency = 0 }):Play()
-			task.wait(0.7)
-			TweenService:Create(t1, TweenInfo.new(0.25), { TextTransparency = 1 }):Play()
-			TweenService:Create(t2, TweenInfo.new(0.25), { TextTransparency = 1 }):Play()
+			TweenService:Create(bar, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+				Size = UDim2.new(1, 0, 0, 2),
+			}):Play()
+			task.wait(0.12)
+			TweenService:Create(brand, TweenInfo.new(0.28), { TextTransparency = 0 }):Play()
+			task.wait(0.08)
+			TweenService:Create(sub, TweenInfo.new(0.28), { TextTransparency = 0 }):Play()
+			TweenService:Create(line, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+				Size = UDim2.fromOffset(120, 1),
+			}):Play()
+			TweenService:Create(tag, TweenInfo.new(0.3), { TextTransparency = 0 }):Play()
+			task.wait(0.75)
+			TweenService:Create(brand, TweenInfo.new(0.22), { TextTransparency = 1 }):Play()
+			TweenService:Create(sub, TweenInfo.new(0.22), { TextTransparency = 1 }):Play()
+			TweenService:Create(line, TweenInfo.new(0.22), { BackgroundTransparency = 1 }):Play()
+			TweenService:Create(tag, TweenInfo.new(0.22), { TextTransparency = 1 }):Play()
+			TweenService:Create(bar, TweenInfo.new(0.25), { BackgroundTransparency = 1 }):Play()
 			TweenService:Create(bg, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
-			task.wait(0.35)
+			task.wait(0.32)
 		end)
 		pcall(function() intro:Destroy() end)
 	end
@@ -1516,6 +1563,17 @@ do
 	RageBox:AddToggle("RageBoost", { Text = "Rage Boost (~0.1s)", Default = true, Callback = function(v) S.RageBoost = v end })
 	RageBox:AddSlider("RageMulti", { Text = "Multi Shots", Default = 12, Min = 1, Max = 20, Rounding = 0, Callback = function(v) S.RageMulti = v end })
 	RageBox:AddLabel("MERGED RAGE (all versions)")
+	RageBox:AddDropdown("RageStyle", {
+		Text = "Rage Style",
+		Values = { "Mix", "Desync", "Underground", "TP" },
+		Default = 1,
+		Callback = function(v) S.RageStyle = v; _G.HUB.RageStyle = v end,
+	})
+	RageBox:AddSlider("UndergroundDepth", {
+		Text = "Underground Depth",
+		Default = 8, Min = 2, Max = 40, Rounding = 0,
+		Callback = function(v) S.UndergroundDepth = v; _G.HUB.UndergroundDepth = v end,
+	})
 	RageBox:AddLabel("NO IMMUNITY (spoof)")
 	RageBox:AddToggle("ZombieRage", { Text = "Zombie Rage", Default = false, Callback = function(v) S.ZombieRage = v; _G.HUB.ZombieRage = v end })
 	RageBox:AddSlider("ZombieRange", { Text = "Zombie Range", Default = 200, Min = 30, Max = 500, Rounding = 0, Callback = function(v) S.ZombieRange = v; _G.HUB.ZombieRange = v end })
@@ -2351,32 +2409,60 @@ task.spawn(function()
 				end
 			end)
 
-			-- DESYNC
+			-- TP / DESYNC / UNDERGROUND / MIX (merged)
 			_halmu.desyncHB = RunService.Heartbeat:Connect(function()
 				if not _halmu.rageEnabled then
 					_halmu.RealCFrame = nil
 					return
 				end
-				if S.Desync == false then
-					_halmu.RealCFrame = nil
-					return
-				end
+				local style = tostring(S.RageStyle or "Mix")
 				local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
 				if not hrp or not _halmu.currentTarget then
 					_halmu.RealCFrame = nil
 					return
 				end
-				if not _halmu.RealCFrame then
-					_halmu.RealCFrame = hrp.CFrame
-					_halmu.RealVelocity = hrp.AssemblyLinearVelocity
-				end
-				local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-				if hum and hum.MoveDirection.Magnitude > 0.05 then
-					_halmu.RealCFrame = _halmu.RealCFrame + hum.MoveDirection * (hum.WalkSpeed or 16) * (1 / 60)
-				end
 				local tp = _halmu.currentTarget.Position
 				local dist = tonumber(_halmu.desyncDist) or 3
-				hrp.CFrame = CFrame.new(tp + Vector3.new(0, dist, 0), tp)
+				local depth = tonumber(S.UndergroundDepth) or 8
+				local t = tick()
+
+				-- always snapshot real for styles that restore view
+				local needRestore = (style == "Desync" or style == "Mix" or style == "Underground")
+				if needRestore then
+					if not _halmu.RealCFrame then
+						_halmu.RealCFrame = hrp.CFrame
+						_halmu.RealVelocity = hrp.AssemblyLinearVelocity
+					end
+					local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+					if hum and hum.MoveDirection.Magnitude > 0.05 then
+						_halmu.RealCFrame = _halmu.RealCFrame + hum.MoveDirection * (hum.WalkSpeed or 16) * (1 / 60)
+					end
+				end
+
+				local serverCF
+				if style == "TP" then
+					-- hard stay above target (visible)
+					serverCF = CFrame.new(tp + Vector3.new(0, dist, 0), tp)
+					_halmu.RealCFrame = nil
+				elseif style == "Underground" then
+					-- under target + slight orbit
+					local ang = t * 4
+					serverCF = CFrame.new(tp + Vector3.new(math.cos(ang) * 2, -depth, math.sin(ang) * 2), tp)
+				elseif style == "Desync" then
+					serverCF = CFrame.new(tp + Vector3.new(0, dist, 0), tp)
+				else -- Mix: cycle under / above / side
+					local phase = math.floor(t * 3) % 3
+					if phase == 0 then
+						serverCF = CFrame.new(tp + Vector3.new(0, dist, 0), tp)
+					elseif phase == 1 then
+						serverCF = CFrame.new(tp + Vector3.new(0, -depth, 0), tp)
+					else
+						local ang = t * 5
+						serverCF = CFrame.new(tp + Vector3.new(math.cos(ang) * 6, 2, math.sin(ang) * 6), tp)
+					end
+				end
+
+				hrp.CFrame = serverCF
 				hrp.AssemblyLinearVelocity = Vector3.zero
 			end)
 
@@ -3230,39 +3316,66 @@ end)
 pcall(function()
 	RunService:UnbindFromRenderStep("hub_aimbot")
 end)
-RunService:BindToRenderStep("hub_aimbot", Enum.RenderPriority.Camera.Value + 1, function()
-	if not S.Aimbot then return end
-	local cam = Workspace.CurrentCamera
-	if not cam then return end
-	local fov = S.AimFOV or 300
-	local center = cam.ViewportSize * 0.5
-	local best, bestD = nil, fov
-	local from = cam.CFrame.Position
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if validEnemy(plr) then
-			local head = getHead(plr)
-			if head then
-				local sp, on = cam:WorldToViewportPoint(head.Position)
-				if on and sp.Z > 0 then
-					local d = (Vector2.new(sp.X, sp.Y) - Vector2.new(center.X, center.Y)).Magnitude
-					if d <= bestD then
-						local wallOk = (not S.WallCheck) or hasLOS(from, head.Position, plr.Character)
-						if wallOk then
-							bestD = d
-							best = head
+-- Aimbot: hard lock — kill 후에도 조준 유지 (원래 화면으로 안 돌아감)
+do
+	local lockedLook = nil -- Unit direction
+	local lockedPos = nil  -- last target world pos
+
+	RunService:BindToRenderStep("hub_aimbot", Enum.RenderPriority.Camera.Value + 1, function()
+		local cam = Workspace.CurrentCamera
+		if not cam then return end
+
+		if not S.Aimbot then
+			lockedLook = nil
+			lockedPos = nil
+			return
+		end
+
+		local fov = S.AimFOV or 300
+		local center = cam.ViewportSize * 0.5
+		local best, bestD = nil, fov
+		local from = cam.CFrame.Position
+
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if validEnemy(plr) then
+				local head = getHead(plr)
+				if head then
+					local sp, on = cam:WorldToViewportPoint(head.Position)
+					if on and sp.Z > 0 then
+						local d = (Vector2.new(sp.X, sp.Y) - Vector2.new(center.X, center.Y)).Magnitude
+						if d <= bestD then
+							local wallOk = (not S.WallCheck) or hasLOS(from, head.Position, plr.Character)
+							if wallOk then
+								bestD = d
+								best = head
+							end
 						end
 					end
 				end
 			end
 		end
-	end
-	if not best then return end
-	if best.Parent then
-		local hh = best.Parent:FindFirstChild("HitboxHead") or best.Parent:FindFirstChild("Head")
-		if hh then best = hh end
-	end
-	cam.CFrame = CFrame.lookAt(cam.CFrame.Position, best.Position)
-end)
+
+		if best then
+			if best.Parent then
+				local hh = best.Parent:FindFirstChild("HitboxHead") or best.Parent:FindFirstChild("Head")
+				if hh then best = hh end
+			end
+			lockedPos = best.Position
+			lockedLook = (best.Position - cam.CFrame.Position)
+			if lockedLook.Magnitude > 0.01 then
+				lockedLook = lockedLook.Unit
+			end
+			cam.CFrame = CFrame.lookAt(cam.CFrame.Position, best.Position)
+		elseif lockedLook then
+			-- 타겟 죽음 / 사라짐 → 같은 방향으로 화면 유지 (스냅백 금지)
+			local hold = cam.CFrame.Position + lockedLook * 50
+			if lockedPos then
+				hold = lockedPos
+			end
+			cam.CFrame = CFrame.lookAt(cam.CFrame.Position, hold)
+		end
+	end)
+end
 
 local lastSilent = 0
 RunService.Heartbeat:Connect(function()
