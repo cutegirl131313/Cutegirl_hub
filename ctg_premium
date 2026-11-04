@@ -8,7 +8,7 @@ do
 	local UIS = game:GetService("UserInputService")
 
 	local VALID_KEYS = {
-	["CG-9VFF-TNLT-IC7M-8QOG"] = true,
+	["CG-9VFF-TNLT-IC7M-8QOG"] = false,
 	["CG-1YF4-NY8V-AO57-FG97"] = true,
 	["CG-IJRX-EKYK-HAQM-6SPC"] = true,
 	["CG-OU9I-ZCAD-O40R-E1BE"] = true,
@@ -1399,6 +1399,27 @@ do
 	local UtilBox = Tabs.Visuals:AddRightGroupbox("Overlay")
 	UtilBox:AddToggle("Crosshair", { Text = "Crosshair", Default = false, Callback = function(v) S.CustomCrosshair = v end })
 	UtilBox:AddToggle("ShowSpectators", { Text = "Spectators", Default = false, Callback = function(v) S.ShowSpectators = v end })
+	UtilBox:AddToggle("Hitmarker", { Text = "Hitmarker", Default = false, Callback = function(v) S.Hitmarker = v; _G.HUB.Hitmarker = v end })
+	UtilBox:AddToggle("ZoomFOV", { Text = "Zoom FOV", Default = false, Callback = function(v)
+		S.ZoomFOV = v; _G.HUB.ZoomFOV = v
+		pcall(function()
+			local cam = workspace.CurrentCamera
+			if v then
+				_G._CG_FOV = cam.FieldOfView
+				cam.FieldOfView = S.ZoomFOVValue or 70
+			elseif _G._CG_FOV then
+				cam.FieldOfView = _G._CG_FOV
+			end
+		end)
+	end })
+	UtilBox:AddSlider("ZoomFOVValue", { Text = "FOV Value", Default = 70, Min = 40, Max = 120, Rounding = 0, Callback = function(v)
+		S.ZoomFOVValue = v; _G.HUB.ZoomFOVValue = v
+		if S.ZoomFOV then
+			pcall(function() workspace.CurrentCamera.FieldOfView = v end)
+		end
+	end })
+	UtilBox:AddToggle("NoCamShake", { Text = "No Cam Shake", Default = false, Callback = function(v) S.NoCamShake = v; _G.HUB.NoCamShake = v end })
+
 end
 do
 	local MoveBox = Tabs.Character:AddLeftGroupbox("Movement")
@@ -4130,18 +4151,23 @@ task.spawn(function()
 	-- brand text under cross (does not spin with arms)
 	local brand = Instance.new("TextLabel")
 	brand.AnchorPoint = Vector2.new(0.5, 0)
-	brand.Position = UDim2.new(0.5, 0, 0.5, 34)
-	brand.Size = UDim2.fromOffset(120, 18)
+	brand.Position = UDim2.new(0.5, 0, 0.5, 28)
+	brand.Size = UDim2.fromOffset(130, 20)
 	brand.BackgroundTransparency = 1
 	brand.Font = Enum.Font.GothamBold
-	brand.TextSize = 10
+	brand.TextSize = 13
 	brand.Text = "cute.win"
-	brand.TextStrokeTransparency = 0.25
+	brand.TextStrokeTransparency = 0
 	brand.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 	brand.Parent = sg
+	local brandStroke = Instance.new("UIStroke")
+	brandStroke.Thickness = 1.2
+	brandStroke.Color = Color3.fromRGB(0, 0, 0)
+	brandStroke.Parent = brand
 
-	local gap = 4
-	local baseLen = 16
+	-- shorter arms, faster spin + pulse (all 4 sides)
+	local gap = 3
+	local baseLen = 11
 	local pulse = 0
 	RunService.RenderStepped:Connect(function(dt)
 		local on = S.CustomCrosshair == true
@@ -4149,8 +4175,10 @@ task.spawn(function()
 		brand.Visible = on
 		if not on then return end
 
-		pulse = pulse + (dt or 0.016) * 2.2
-		local expand = 1 + 0.35 * math.sin(pulse)
+		dt = dt or 0.016
+		pulse = pulse + dt * 4.2
+		-- gentle expand/contract on all axes
+		local expand = 1 + 0.22 * math.sin(pulse)
 		local len = baseLen * expand
 		local thick = 2
 
@@ -4165,11 +4193,15 @@ task.spawn(function()
 		left.Position = UDim2.new(0.5, -off, 0.5, 0)
 		right.Position = UDim2.new(0.5, off, 0.5, 0)
 
-		root.Rotation = (root.Rotation + (dt or 0.016) * 90) % 360
+		-- faster spin
+		root.Rotation = (root.Rotation + dt * 160) % 360
 
-		local col = Color3.fromHSV((tick() * 0.25) % 1, 0.9, 1)
+		local col = Color3.fromHSV((tick() * 0.55) % 1, 0.95, 1)
 		for _, a in ipairs(arms) do a.BackgroundColor3 = col end
-		for _, o in ipairs(outlines) do o.Color = Color3.fromRGB(0, 0, 0) end
+		for _, o in ipairs(outlines) do
+			o.Color = Color3.fromRGB(0, 0, 0)
+			o.Thickness = 1.5
+		end
 		brand.TextColor3 = col
 	end)
 end)
@@ -4656,4 +4688,64 @@ task.spawn(function()
 	end)
 
 	print("[CuteGirl] Kicia AutoHeal/AutoReload loaded")
+end)
+
+
+-- Hitmarker + NoCamShake
+task.spawn(function()
+	local CoreGui = game:GetService("CoreGui")
+	local lastHP = {}
+	local function flash()
+		pcall(function()
+			local sg = Instance.new("ScreenGui")
+			sg.Name = "CG_Hitmarker"
+			sg.ResetOnSpawn = false
+			sg.IgnoreGuiInset = true
+			sg.Parent = (gethui and gethui()) or CoreGui
+			local f = Instance.new("Frame")
+			f.AnchorPoint = Vector2.new(0.5, 0.5)
+			f.Position = UDim2.fromScale(0.5, 0.5)
+			f.Size = UDim2.fromOffset(18, 2)
+			f.BackgroundColor3 = Color3.new(1,1,1)
+			f.BorderSizePixel = 0
+			f.Parent = sg
+			local f2 = Instance.new("Frame")
+			f2.AnchorPoint = Vector2.new(0.5, 0.5)
+			f2.Position = UDim2.fromScale(0.5, 0.5)
+			f2.Size = UDim2.fromOffset(2, 18)
+			f2.BackgroundColor3 = Color3.new(1,1,1)
+			f2.BorderSizePixel = 0
+			f2.Parent = sg
+			task.delay(0.12, function() pcall(function() sg:Destroy() end) end)
+		end)
+	end
+	RunService.Heartbeat:Connect(function()
+		if S.Hitmarker then
+			for _, plr in ipairs(Players:GetPlayers()) do
+				if plr ~= LP and plr.Character then
+					local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+					if hum then
+						local id = plr.UserId
+						local hp = hum.Health
+						local prev = lastHP[id]
+						if prev and hp < prev - 0.5 then
+							flash()
+						end
+						lastHP[id] = hp
+					end
+				end
+			end
+		end
+		if S.NoCamShake then
+			pcall(function()
+				local cam = workspace.CurrentCamera
+				if cam then
+					-- soft lock FOV jitter
+					if S.ZoomFOV and S.ZoomFOVValue then
+						cam.FieldOfView = S.ZoomFOVValue
+					end
+				end
+			end)
+		end
+	end)
 end)
