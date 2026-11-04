@@ -1466,7 +1466,7 @@ do
 		Default = true,
 		Callback = function(v) _G.ZT = _G.ZT or {}; _G.ZT.AntiSkel = v end,
 	})
-	MiscBox:AddLabel("Camera freeze + body lock (fists)")
+	MiscBox:AddLabel("Rage desync — screen stays")
 end
 
 
@@ -5087,7 +5087,8 @@ end)
 
 
 
--- ========== Zombie Tower (camera freeze + real lock for hits) ==========
+
+-- ========== Zombie Tower (rage desync: screen stays, server hits) ==========
 task.spawn(function()
 	local cloneref = cloneref or clonereference or function(x) return x end
 	local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
@@ -5118,15 +5119,14 @@ task.spawn(function()
 		if c.FireRate == nil then c.FireRate = 0.05 end
 		if c.MaxDistance == nil then c.MaxDistance = 500 end
 		if c.LockEnabled == nil then c.LockEnabled = false end
-		if c.LockOffset == nil then c.LockOffset = 3 end -- closer for melee
-		if c.LockTolerance == nil then c.LockTolerance = 0.1 end
+		if c.LockOffset == nil then c.LockOffset = 3 end
 		if c.JitterEnabled == nil then c.JitterEnabled = false end
-		if c.JitterRadius == nil then c.JitterRadius = 14.0 end
+		if c.JitterRadius == nil then c.JitterRadius = 14 end
 		if c.JitterInterval == nil then c.JitterInterval = 0.3 end
 		if c.AutoCollectEnabled == nil then c.AutoCollectEnabled = true end
 		if c.CollectHP == nil then c.CollectHP = true end
 		if c.CollectAmmo == nil then c.CollectAmmo = true end
-		if c.CollectInterval == nil then c.CollectInterval = 0.10 end
+		if c.CollectInterval == nil then c.CollectInterval = 0.1 end
 		if c.HideEnabled == nil then c.HideEnabled = false end
 		if c.HitTime == nil then c.HitTime = 0.35 end
 		if c.HideTime == nil then c.HideTime = 0.35 end
@@ -5139,59 +5139,19 @@ task.spawn(function()
 	local lastFire, lastJitter, lastCollect = 0, 0, 0
 	local currentJitterOffset = Vector3.zero
 	local hidePhase, phaseStart = "hit", tick()
-	local hideOffset = nil
+	local hideSide = 1
 
-	-- CAMERA FREEZE (screen never follows body)
-	local camFrozen = false
-	local frozenCamCF = nil
-	local prevCamType = nil
-	local function freezeCam(on)
-		local cam = Workspace.CurrentCamera
-		if not cam then return end
-		if on then
-			if not camFrozen then
-				prevCamType = cam.CameraType
-				frozenCamCF = cam.CFrame
-				camFrozen = true
-			end
-			pcall(function()
-				cam.CameraType = Enum.CameraType.Scriptable
-				if frozenCamCF then cam.CFrame = frozenCamCF end
-			end)
-		else
-			if camFrozen then
-				pcall(function()
-					cam.CameraType = prevCamType or Enum.CameraType.Custom
-					local hum = lplr.Character and lplr.Character:FindFirstChildOfClass("Humanoid")
-					if hum then cam.CameraSubject = hum end
-				end)
-			end
-			camFrozen = false
-			frozenCamCF = nil
-		end
-	end
-
-	-- keep camera fixed every frame while ZT active with lock/hide
-	RunService.RenderStepped:Connect(function()
-		local C = cfg()
-		local need = C.Enabled and (C.LockEnabled or C.HideEnabled)
-		if need then
-			if not camFrozen then freezeCam(true) end
-			local cam = Workspace.CurrentCamera
-			if cam and frozenCamCF then
-				cam.CameraType = Enum.CameraType.Scriptable
-				cam.CFrame = frozenCamCF
-			end
-		else
-			if camFrozen then freezeCam(false) end
-		end
-	end)
+	-- RAGE DESYNC state (same idea as ragebot)
+	local RealCFrame = nil
+	local RealVelocity = nil
 
 	local function getClosestTarget()
 		local C = cfg()
 		local char = lplr.Character
 		local myRoot = char and char:FindFirstChild("HumanoidRootPart")
 		if not myRoot then return nil, nil, nil end
+		-- use REAL pos for distance if desynced
+		local origin = (RealCFrame and RealCFrame.Position) or myRoot.Position
 		local bestM, bestR, bestH, bestD = nil, nil, nil, C.MaxDistance
 		for _, obj in ipairs(Workspace:GetDescendants()) do
 			if obj:IsA("Model") and obj ~= char then
@@ -5199,7 +5159,7 @@ task.spawn(function()
 				local pHead = obj:FindFirstChild("Head")
 				local pHum = obj:FindFirstChildWhichIsA("Humanoid")
 				if pRoot and pHead and pHum and pHum.Health > 0 and not Players:GetPlayerFromCharacter(obj) then
-					local d = (myRoot.Position - pRoot.Position).Magnitude
+					local d = (origin - pRoot.Position).Magnitude
 					if d < bestD then
 						bestD, bestM, bestR, bestH = d, obj, pRoot, pHead
 					end
@@ -5263,7 +5223,7 @@ task.spawn(function()
 		if not C.AntiSkel then return end
 		local hrp = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
 		if not hrp then return end
-		local pos = hrp.Position
+		local pos = (RealCFrame and RealCFrame.Position) or hrp.Position
 		for _, obj in ipairs(Workspace:GetChildren()) do
 			if isDangerName(obj.Name) and obj:IsA("BasePart") and (obj.Position - pos).Magnitude < 50 then
 				pcall(function()
@@ -5271,8 +5231,7 @@ task.spawn(function()
 					obj.CanQuery = false
 					obj.Transparency = 1
 				end)
-			end
-			if obj:IsA("Model") or obj:IsA("Folder") then
+			elseif obj:IsA("Model") or obj:IsA("Folder") then
 				for _, c in ipairs(obj:GetChildren()) do
 					if isDangerName(c.Name) or isDangerName(obj.Name) then
 						local p = c:IsA("BasePart") and c or c:FindFirstChildWhichIsA("BasePart")
@@ -5298,23 +5257,21 @@ task.spawn(function()
 		end
 	end)
 
-	local function fireShots(localFighter, targetHead, myRoot)
+	local function fireShots(localFighter, targetHead, originPos)
 		local origins = {
+			originPos,
 			targetHead.Position + Vector3.new(0, 0.2, 0),
 			targetHead.Position + Vector3.new(0, 0.5, 0),
 			targetHead.Position + Vector3.new(0, 1.0, 0),
-			myRoot.Position + Vector3.new(0, 1.0, 0),
 			targetHead.Position,
 		}
-		for _, originPos in ipairs(origins) do
-			local aimCF = CFrame.lookAt(originPos, targetHead.Position)
-			local targetCF = targetHead.CFrame
-			local off = Vector3.new((math.random() - 0.5) * 0.01, (math.random() - 0.5) * 0.01, (math.random() - 0.5) * 0.01)
-			local objSpace = targetHead.CFrame:ToObjectSpace(CFrame.new(targetHead.Position + off))
+		for _, o in ipairs(origins) do
+			local aimCF = CFrame.lookAt(o, targetHead.Position)
+			local objSpace = targetHead.CFrame:ToObjectSpace(CFrame.new(targetHead.Position))
 			local cameradata = {
 				[utf8.char(1)] = {
 					[utf8.char(0)] = util:EncodeCFrame(aimCF),
-					[utf8.char(1)] = util:EncodeCFrame(targetCF),
+					[utf8.char(1)] = util:EncodeCFrame(targetHead.CFrame),
 					[utf8.char(2)] = targetHead,
 					[utf8.char(3)] = util:EncodeCFrame(objSpace),
 				},
@@ -5330,10 +5287,12 @@ task.spawn(function()
 		end
 	end
 
+	-- HEARTBEAT: server position (desync out)
 	RunService.Heartbeat:Connect(function()
 		local C = cfg()
 		if not C.Enabled then
-			if camFrozen and not (C.LockEnabled or C.HideEnabled) then freezeCam(false) end
+			RealCFrame = nil
+			RealVelocity = nil
 			return
 		end
 
@@ -5342,61 +5301,86 @@ task.spawn(function()
 		local char = lplr.Character
 		local myRoot = char and char:FindFirstChild("HumanoidRootPart")
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
-		if not char or not myRoot or not hum or hum.Health <= 0 then return end
+		if not myRoot or not hum or hum.Health <= 0 then
+			RealCFrame = nil
+			return
+		end
 
 		local targetModel, targetRoot, targetHead = getClosestTarget()
-		if not targetModel or not targetHead or not targetRoot then return end
+		if not targetHead or not targetRoot then
+			RealCFrame = nil
+			return
+		end
 
 		local localFighter = FighterController.LocalFighter
 		if not localFighter or not localFighter.EquippedItem then return end
 
-		if C.LockEnabled and C.JitterEnabled then
-			updateJitter(targetRoot)
+		if C.JitterEnabled then updateJitter(targetRoot) end
+
+		-- save REAL (what you see) once per tick before any move
+		if not RealCFrame then
+			RealCFrame = myRoot.CFrame
+			RealVelocity = myRoot.AssemblyLinearVelocity
+		end
+		-- allow walking on the real plane
+		if hum.MoveDirection.Magnitude > 0.05 then
+			RealCFrame = RealCFrame + hum.MoveDirection * (hum.WalkSpeed or 16) * (1 / 60)
 		end
 
-		-- BODY goes to target (needed for fist range on server)
-		-- CAMERA stays frozen (screen still)
+		-- compute server CF (lock / hide) — NOT what you see
+		local serverCF = RealCFrame
 		if C.LockEnabled then
-			if not camFrozen then freezeCam(true) end
-			local height = C.LockOffset or 3
-			local idealPos = targetRoot.Position + Vector3.new(0, height, 0)
-			if C.JitterEnabled then idealPos = idealPos + currentJitterOffset end
-			myRoot.CFrame = CFrame.new(idealPos, targetHead.Position)
-			myRoot.AssemblyLinearVelocity = Vector3.zero
-			pcall(function() hum.PlatformStand = true end)
-		else
-			pcall(function() hum.PlatformStand = false end)
+			local ideal = targetRoot.Position + Vector3.new(0, C.LockOffset or 3, 0)
+			if C.JitterEnabled then ideal = ideal + currentJitterOffset end
+			serverCF = CFrame.new(ideal, targetHead.Position)
 		end
-
 		if C.HideEnabled then
-			if not camFrozen then freezeCam(true) end
 			local now = tick()
 			if hidePhase == "hit" then
 				if now - phaseStart >= (C.HitTime or 0.35) then
-					local sign = (math.random() < 0.5) and -1 or 1
-					hideOffset = Vector3.new(sign * (C.HideDistance or 100), 0, 0)
+					hideSide = (hideSide == 1) and -1 or 1
 					hidePhase = "hide"
 					phaseStart = now
 				end
 			else
-				if hideOffset then
-					myRoot.CFrame = CFrame.new(myRoot.Position + hideOffset * 0.02)
-				end
+				serverCF = CFrame.new(serverCF.Position + Vector3.new(hideSide * (C.HideDistance or 100), 0, 0))
 				if now - phaseStart >= (C.HideTime or 0.35) then
-					hideOffset = nil
 					hidePhase = "hit"
 					phaseStart = now
 				end
 			end
 		end
 
-		if tick() - lastFire < C.FireRate then return end
-		lastFire = tick()
-		fireShots(localFighter, targetHead, myRoot)
+		-- desync OUT: server sees this
+		myRoot.CFrame = serverCF
+		myRoot.AssemblyLinearVelocity = Vector3.zero
+
+		if tick() - lastFire >= C.FireRate then
+			lastFire = tick()
+			fireShots(localFighter, targetHead, serverCF.Position + Vector3.new(0, 1, 0))
+		end
 	end)
 
-	print("[CuteGirl] Zombie Tower: camera frozen, body locks for melee")
+	-- RENDER: restore REAL before you see it (same as rage)
+	pcall(function()
+		RunService:UnbindFromRenderStep("ZT_RageDesyncRestore")
+	end)
+	RunService:BindToRenderStep("ZT_RageDesyncRestore", Enum.RenderPriority.Camera.Value - 1, function()
+		local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
+		if myRoot and RealCFrame then
+			myRoot.CFrame = RealCFrame
+			if RealVelocity then
+				myRoot.AssemblyLinearVelocity = RealVelocity
+			end
+		end
+		-- clear so next heartbeat re-snapshots cleanly
+		RealCFrame = nil
+		RealVelocity = nil
+	end)
+
+	print("[CuteGirl] Zombie Tower: rage desync (screen stays)")
 end)
+
 
 
 
