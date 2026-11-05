@@ -2233,22 +2233,38 @@ task.spawn(function()
 			return ok and id or nil
 		end
 
+		local utilMod
+		pcall(function() utilMod = require(RS.Modules.Utility) end)
+
+		-- Kicia ShootEncoded-compatible packet
 		local function buildShot(originPos, targetPart)
 			local targetPos = targetPart.Position
-			local lookCF = CFrame.lookAt(originPos, targetPos)
-			local lX, lY, lZ = lookCF:ToOrientation()
+			local aimCF = CFrame.lookAt(originPos, targetPos)
+			local targetCF = targetPart.CFrame
+			local objSpace = targetPart.CFrame:ToObjectSpace(CFrame.new(targetPos))
+			if utilMod and utilMod.EncodeCFrame then
+				return {
+					[utf8.char(1)] = {
+						[utf8.char(0)] = utilMod:EncodeCFrame(aimCF),
+						[utf8.char(1)] = utilMod:EncodeCFrame(targetCF),
+						[utf8.char(2)] = targetPart,
+						[utf8.char(3)] = utilMod:EncodeCFrame(objSpace),
+					},
+				}
+			end
+			local lX, lY, lZ = aimCF:ToOrientation()
 			local originStruct = {
 				[utf8.char(0)] = originPos.X, [utf8.char(1)] = originPos.Y, [utf8.char(2)] = originPos.Z,
 				[utf8.char(3)] = lX, [utf8.char(4)] = lY, [utf8.char(5)] = lZ,
 			}
-			local relCF = targetPart.CFrame:ToObjectSpace(CFrame.new(targetPos))
-			local rX, rY, rZ = relCF:ToOrientation()
+			local rX, rY, rZ = objSpace:ToOrientation()
 			return {
 				[utf8.char(1)] = {
-					[utf8.char(0)] = originStruct, [utf8.char(1)] = originStruct,
+					[utf8.char(0)] = originStruct,
+					[utf8.char(1)] = originStruct,
 					[utf8.char(2)] = targetPart,
 					[utf8.char(3)] = {
-						[utf8.char(0)] = relCF.X, [utf8.char(1)] = relCF.Y, [utf8.char(2)] = relCF.Z,
+						[utf8.char(0)] = objSpace.X, [utf8.char(1)] = objSpace.Y, [utf8.char(2)] = objSpace.Z,
 						[utf8.char(3)] = rX, [utf8.char(4)] = rY, [utf8.char(5)] = rZ,
 					},
 				},
@@ -3316,29 +3332,29 @@ end)
 pcall(function()
 	RunService:UnbindFromRenderStep("hub_aimbot")
 end)
--- Aimbot: hard lock — kill 후에도 조준 유지 (원래 화면으로 안 돌아감)
+-- Aimbot (Kicia sticky lock)
 do
-	local lockedLook = nil -- Unit direction
-	local lockedPos = nil  -- last target world pos
+	local stickyPlr, stickyHead = nil, nil
 
-	RunService:BindToRenderStep("hub_aimbot", Enum.RenderPriority.Camera.Value + 1, function()
-		local cam = Workspace.CurrentCamera
-		if not cam then return end
+	local function headOf(plr)
+		if not plr or not plr.Character then return nil end
+		local c = plr.Character
+		local hum = c:FindFirstChildOfClass("Humanoid")
+		if not hum or hum.Health <= 0 then return nil end
+		return c:FindFirstChild("HitboxHead")
+			or c:FindFirstChild("HitboxHeadSmall")
+			or c:FindFirstChild("Head")
+			or (getHead and getHead(plr))
+	end
 
-		if not S.Aimbot then
-			lockedLook = nil
-			lockedPos = nil
-			return
-		end
-
+	local function pickTarget(cam)
 		local fov = S.AimFOV or 300
 		local center = cam.ViewportSize * 0.5
-		local best, bestD = nil, fov
 		local from = cam.CFrame.Position
-
+		local best, bestD, bestPlr = nil, fov, nil
 		for _, plr in ipairs(Players:GetPlayers()) do
 			if validEnemy(plr) then
-				local head = getHead(plr)
+				local head = headOf(plr)
 				if head then
 					local sp, on = cam:WorldToViewportPoint(head.Position)
 					if on and sp.Z > 0 then
@@ -3346,33 +3362,35 @@ do
 						if d <= bestD then
 							local wallOk = (not S.WallCheck) or hasLOS(from, head.Position, plr.Character)
 							if wallOk then
-								bestD = d
-								best = head
+								bestD, best, bestPlr = d, head, plr
 							end
 						end
 					end
 				end
 			end
 		end
+		return bestPlr, best
+	end
 
-		if best then
-			if best.Parent then
-				local hh = best.Parent:FindFirstChild("HitboxHead") or best.Parent:FindFirstChild("Head")
-				if hh then best = hh end
-			end
-			lockedPos = best.Position
-			lockedLook = (best.Position - cam.CFrame.Position)
-			if lockedLook.Magnitude > 0.01 then
-				lockedLook = lockedLook.Unit
-			end
-			cam.CFrame = CFrame.lookAt(cam.CFrame.Position, best.Position)
-		elseif lockedLook then
-			-- 타겟 죽음 / 사라짐 → 같은 방향으로 화면 유지 (스냅백 금지)
-			local hold = cam.CFrame.Position + lockedLook * 50
-			if lockedPos then
-				hold = lockedPos
-			end
-			cam.CFrame = CFrame.lookAt(cam.CFrame.Position, hold)
+	pcall(function() RunService:UnbindFromRenderStep("hub_aimbot") end)
+	RunService:BindToRenderStep("hub_aimbot", Enum.RenderPriority.Camera.Value + 1, function()
+		if not S.Aimbot then
+			stickyPlr, stickyHead = nil, nil
+			return
+		end
+		local cam = Workspace.CurrentCamera
+		if not cam then return end
+
+		if stickyPlr then
+			local h = headOf(stickyPlr)
+			if h then stickyHead = h else stickyPlr, stickyHead = nil, nil end
+		end
+		if not stickyPlr then
+			stickyPlr, stickyHead = pickTarget(cam)
+		end
+		if stickyHead and stickyHead.Parent then
+			-- track live head every frame (no free-look snap)
+			cam.CFrame = CFrame.lookAt(cam.CFrame.Position, stickyHead.Position)
 		end
 	end)
 end
