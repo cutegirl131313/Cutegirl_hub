@@ -1181,23 +1181,26 @@ task.spawn(function()
 			end
 
 			if want then
-				-- fight game scripts forcing FP every frame
+				-- Kicia third person every frame
 				LP.CameraMode = Enum.CameraMode.Classic
-				if LP.CameraMaxZoomDistance < 8 then
-					LP.CameraMaxZoomDistance = 32
-				end
-				if LP.CameraMinZoomDistance > 3 then
-					LP.CameraMinZoomDistance = 3
-				end
+				LP.CameraMinZoomDistance = 0.5
+				LP.CameraMaxZoomDistance = 128
+				local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
 				local cam = workspace.CurrentCamera
-				if cam and cam.CameraType ~= Enum.CameraType.Custom and cam.CameraType ~= Enum.CameraType.Scriptable then
-					cam.CameraType = Enum.CameraType.Custom
+				if hrp and cam then
+					local off = kiciaThirdPersonOffset(hrp.CFrame)
+					local worldPos = hrp.CFrame:PointToWorldSpace(off)
+					cam.CameraType = Enum.CameraType.Scriptable
+					-- look toward character upper body
+					local lookAt = hrp.Position + Vector3.new(0, 1.5, 0)
+					cam.CFrame = CFrame.lookAt(worldPos, lookAt)
 				end
-				hum.CameraOffset = Vector3.new(1.2, 1.0, 0)
-				-- keep local character visible
-				for _, p in ipairs(LP.Character:GetChildren()) do
-					if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
-						p.LocalTransparencyModifier = 0
+				-- character visible
+				if LP.Character then
+					for _, p in ipairs(LP.Character:GetDescendants()) do
+						if p:IsA("BasePart") then
+							p.LocalTransparencyModifier = 0
+						end
 					end
 				end
 			end
@@ -1562,7 +1565,10 @@ do
 	RageBox:AddToggle("RageBotSwitch", { Text = "Rage Bot", Default = false, Callback = function(v) S.RageBot = v; if runRageBot then runRageBot() end end })
 	RageBox:AddToggle("RageBoost", { Text = "Rage Boost (~0.1s)", Default = true, Callback = function(v) S.RageBoost = v end })
 	RageBox:AddSlider("RageMulti", { Text = "Multi Shots", Default = 12, Min = 1, Max = 20, Rounding = 0, Callback = function(v) S.RageMulti = v end })
-	RageBox:AddLabel("MERGED RAGE (all versions)")
+	RageBox:AddLabel("Rage style: VK + Honyang")
+	RageBox:AddSlider("RageRadius", { Text = "Honyang Radius", Default = 3, Min = 1, Max = 8, Rounding = 1, Callback = function(v) S.RageRadius = v end })
+	RageBox:AddSlider("RageAngle", { Text = "Honyang Angle", Default = 180, Min = 0, Max = 360, Rounding = 0, Callback = function(v) S.RageAngle = v end })
+	RageBox:AddSlider("RageHeight", { Text = "Honyang Height", Default = 0, Min = -10, Max = 15, Rounding = 1, Callback = function(v) S.RageHeight = v end })
 	RageBox:AddDropdown("RageStyle", {
 		Text = "Rage Style",
 		Values = { "Mix", "Desync", "Underground", "TP" },
@@ -1621,10 +1627,50 @@ do
 
 end
 do
-	local MoveBox = Tabs.Character:AddLeftGroupbox("Movement")
+	local MoveBox = 
+	local SkyBox = Tabs.Visuals:AddRightGroupbox("Skybox (Kicia)")
+	SkyBox:AddToggle("SkyOn", {
+		Text = "Enable Skybox",
+		Default = false,
+		Callback = function(v)
+			S.SkyboxEnabled = v
+			_G.HUB.SkyboxEnabled = v
+			if _G.CuteGirlApplySky then _G.CuteGirlApplySky() end
+		end,
+	})
+	SkyBox:AddDropdown("SkyPreset", {
+		Text = "Preset",
+		Values = _G.CuteGirlSkyNames or { "Galaxy", "Pink", "Hell", "Space", "Cloud" },
+		Default = 1,
+		Callback = function(v)
+			S.SkyboxPreset = v
+			_G.HUB.SkyboxPreset = v
+			if _G.CuteGirlApplySky then _G.CuteGirlApplySky() end
+		end,
+	})
+
+Tabs.Character:AddLeftGroupbox("Movement")
 	MoveBox:AddToggle("Fly", { Text = "Fly", Default = false, Callback = function(v) S.Fly = v end })
 	MoveBox:AddSlider("FlySpeed", { Text = "Fly Speed", Default = 60, Min = 10, Max = 300, Rounding = 0, Callback = function(v) S.FlySpeed = v end })
 	MoveBox:AddToggle("Noclip", { Text = "Noclip", Default = false, Callback = function(v) S.Noclip = v end })
+	MoveBox:AddToggle("HeadTP", { Text = "Head TP (above)", Default = false, Callback = function(v) S.HeadTP = v; _G.HUB.HeadTP = v end })
+	MoveBox:AddDropdown("EmoteDrop", {
+		Text = "Emote (Kicia)",
+		Values = { "None", "Bodybuilder Posing", "Floss Dance", "Hyper Circle Scootin'", "Dolphin Dance", "Halloween Dance 2", "Standing Twerk", "Breakdancing", "Fish Air Swimming", "Gangnam Style", "Cat Girl Bounce", "Hype Dance", "Line Dance", "Floor Driving", "Cha Cha Dance", "Still Standing", "Ballet Spin", "Worm Dance", "Take the L", "Wave", "Laugh", "Point", "Default Dance", "T-Pose" },
+		Default = 1,
+		Callback = function(v)
+			S.EmoteName = v
+			_G.HUB.EmoteName = v
+			if v ~= "None" and _G.CuteGirlPlayEmote then
+				_G.CuteGirlPlayEmote(v)
+			end
+		end,
+	})
+	MoveBox:AddButton("Play Emote", function()
+		if _G.CuteGirlPlayEmote then _G.CuteGirlPlayEmote(S.EmoteName or "Wave") end
+	end)
+	MoveBox:AddToggle("BackTP", { Text = "Back TP (behind)", Default = false, Callback = function(v) S.BackTP = v; _G.HUB.BackTP = v end })
+	MoveBox:AddToggle("HitLog", { Text = "Hit Damage Log", Default = false, Callback = function(v) S.HitLog = v; _G.HUB.HitLog = v end })
 	MoveBox:AddToggle("WalkSpeed", { Text = "Walk Speed", Default = false, Callback = function(v) S.WalkSpeed = v end })
 	MoveBox:AddSlider("WalkSpeedValue", { Text = "Walk Value", Default = 45, Min = 16, Max = 200, Rounding = 0, Callback = function(v) S.WalkSpeedValue = v end })
 	MoveBox:AddToggle("Freecam", { Text = "Freecam", Default = false, Callback = function(v) S.Freecam = v end })
@@ -2272,6 +2318,7 @@ task.spawn(function()
 		end
 
 		_halmu.startRage = function(on)
+			-- VK_CuteGirl_Full-34 rage style
 			if _halmu.rageConn then pcall(function() _halmu.rageConn:Disconnect() end) _halmu.rageConn = nil end
 			if _halmu.desyncHB then pcall(function() _halmu.desyncHB:Disconnect() end) _halmu.desyncHB = nil end
 			if _halmu.targetConn then pcall(function() _halmu.targetConn:Disconnect() end) _halmu.targetConn = nil end
@@ -2281,31 +2328,30 @@ task.spawn(function()
 			_halmu.currentTarget = nil
 			if not on then return end
 
-			-- ensure modules live
-			local function ensureModules()
+			local utilMod
+			pcall(function() utilMod = require(RS.Modules.Utility) end)
+
+			local function ensure()
 				if not FighterCtrl then
-					pcall(function()
-						FighterCtrl = require(LP.PlayerScripts.Controllers.FighterController)
-					end)
+					pcall(function() FighterCtrl = require(LP.PlayerScripts.Controllers.FighterController) end)
 				end
-				if not _ssEnum then
-					pcall(function()
-						if not EnumLib then
-							EnumLib = require(RS.Modules.EnumLibrary)
-						end
-						_ssEnum = EnumLib:ToEnum("StartShooting")
-					end)
+				if not EnumLib then
+					pcall(function() EnumLib = require(RS.Modules.EnumLibrary) end)
+				end
+				if not _ssEnum and EnumLib then
+					pcall(function() _ssEnum = EnumLib:ToEnum("StartShooting") end)
 				end
 				if not _useItemRemote then
-					pcall(function()
-						_useItemRemote = RS.Remotes.Replication.Fighter.UseItem
-					end)
+					pcall(function() _useItemRemote = RS.Remotes.Replication.Fighter.UseItem end)
+				end
+				if not utilMod then
+					pcall(function() utilMod = require(RS.Modules.Utility) end)
 				end
 			end
-			ensureModules()
+			ensure()
 
-			local function resolveObjId()
-				ensureModules()
+			local function getOid()
+				ensure()
 				local lf = FighterCtrl and (FighterCtrl.LocalFighter or (FighterCtrl.GetFighter and FighterCtrl:GetFighter(LP)))
 				local item = lf and lf.EquippedItem
 				if not item then return nil end
@@ -2315,171 +2361,214 @@ task.spawn(function()
 				return ok and id or nil
 			end
 
-			local function getHead(char)
-				if not char then return nil end
-				return char:FindFirstChild("HitboxHead")
-					or char:FindFirstChild("HitboxHeadSmall")
-					or char:FindFirstChild("Head")
-					or char:FindFirstChild("HumanoidRootPart")
+			-- VK encodeShot
+			local function encodeShot(from, to, head)
+				if typeof(from) ~= "Vector3" or typeof(to) ~= "Vector3" or not head then return nil end
+				if utilMod and type(utilMod.EncodeCFrame) == "function" then
+					local ok, data = pcall(function()
+						local e = utilMod:EncodeCFrame(CFrame.new(from, to))
+						local hit = utilMod:EncodeCFrame(CFrame.new(0.43, 0.25, 0.42))
+						return {
+							[utf8.char(1)] = {
+								[utf8.char(0)] = e,
+								[utf8.char(1)] = e,
+								[utf8.char(2)] = head,
+								[utf8.char(3)] = hit,
+							},
+						}
+					end)
+					if ok and data then return data end
+				end
+				local lookCF = CFrame.lookAt(from, to)
+				local lX, lY, lZ = lookCF:ToOrientation()
+				local originStruct = {
+					[utf8.char(0)] = from.X, [utf8.char(1)] = from.Y, [utf8.char(2)] = from.Z,
+					[utf8.char(3)] = lX, [utf8.char(4)] = lY, [utf8.char(5)] = lZ,
+				}
+				local relCF = head.CFrame:ToObjectSpace(CFrame.new(to))
+				local rX, rY, rZ = relCF:ToOrientation()
+				return {
+					[utf8.char(1)] = {
+						[utf8.char(0)] = originStruct,
+						[utf8.char(1)] = originStruct,
+						[utf8.char(2)] = head,
+						[utf8.char(3)] = {
+							[utf8.char(0)] = relCF.X, [utf8.char(1)] = relCF.Y, [utf8.char(2)] = relCF.Z,
+							[utf8.char(3)] = rX, [utf8.char(4)] = rY, [utf8.char(5)] = rZ,
+						},
+					},
+				}
 			end
 
-			-- TARGET PICK (was missing — rage never locked anyone)
-			_halmu.targetConn = RunService.Heartbeat:Connect(function()
-				if not _halmu.rageEnabled then
-					_halmu.currentTarget = nil
-					return
+			local function fireAt(head, mode)
+				if not head or not head.Parent then return end
+				ensure()
+				if not _useItemRemote or not _ssEnum then return end
+				local oid = getOid()
+				if not oid then return end
+				local cam = workspace.CurrentCamera
+				local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+				local targetPos = head.Position
+				local from
+				if mode == "target" then
+					from = targetPos + Vector3.new(0, 0.12, 0)
+				else
+					from = (cam and cam.CFrame.Position) or (root and root.Position) or targetPos
 				end
-				local ref = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-				local refPos = ref and ref.Position or Vector3.zero
-				local closest, best = nil, math.huge
-				for _, plr in pairs(Players:GetPlayers()) do
-					if plr ~= LP and plr.Character and not _isSameTeam(plr) then
-						local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
-						local hum = plr.Character:FindFirstChildOfClass("Humanoid")
-						if hrp and hum and hum.Health > 0 then
-							local d = (refPos - hrp.Position).Magnitude
-							local score = d
-							if S.PrioritizeLowHP ~= false then
-								score = d * (0.35 + 0.65 * (hum.Health / math.max(hum.MaxHealth, 1)))
-							end
-							if score < best then
-								best = score
-								closest = plr
+				local data = encodeShot(from, targetPos, head)
+				if not data then return end
+				pcall(function()
+					_useItemRemote:FireServer(oid, _ssEnum, data, nil)
+				end)
+			end
+
+			local function pickRageHead()
+				local best, bestD = nil, 1e9
+				local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+				local cam = workspace.CurrentCamera
+				local ref = (root and root.Position) or (cam and cam.CFrame.Position)
+				if not ref then return nil end
+				for _, plr in ipairs(Players:GetPlayers()) do
+					if plr ~= LP and plr.Character then
+						local char = plr.Character
+						local hum = char:FindFirstChildOfClass("Humanoid")
+						local hrp = char:FindFirstChild("HumanoidRootPart")
+						if hum and hrp and hum.Health > 0 and not _isSameTeam(plr) then
+							local d = (ref - hrp.Position).Magnitude
+							if d < bestD and d < 5000 then
+								bestD = d
+								best = char:FindFirstChild("HitboxHead")
+									or char:FindFirstChild("HitboxHeadSmall")
+									or char:FindFirstChild("Head")
+									or hrp
 							end
 						end
 					end
 				end
-				_halmu.currentTarget = closest and getHead(closest.Character) or nil
-			end)
+				return best
+			end
 
-			local cachedId = nil
-			local lastShot = 0
-
-			-- FIRE
+			local lastRage = 0
+			-- VK: target pick + fire target+camera + desync
 			_halmu.rageConn = RunService.Heartbeat:Connect(function()
-				if not _halmu.rageEnabled then return end
-				local head = _halmu.currentTarget
-				if not head or not head.Parent then return end
+				if not _halmu.rageEnabled then
+					_halmu.currentTarget = nil
+					_halmu.RealCFrame = nil
+					return
+				end
 
-				local targetChar = head:FindFirstAncestorOfClass("Model") or head.Parent
-				local targetPlr = targetChar and Players:GetPlayerFromCharacter(targetChar)
-				if targetPlr == LP then return end
-				if targetPlr and _isSameTeam(targetPlr) then return end
-
-				head = getHead(targetChar) or head
+				local head = pickRageHead()
 				_halmu.currentTarget = head
 
-				local objId = resolveObjId()
-				if objId then cachedId = objId else objId = cachedId end
-				if not objId then return end
-				if not _ssEnum or not _useItemRemote then
-					ensureModules()
-					if not _ssEnum or not _useItemRemote then return end
-				end
-
-				-- immunity spoof
-				pcall(function()
-					local c = targetChar
-					if not c then return end
-					pcall(function() c:SetAttribute("CanTakeDamage", true) end)
-					pcall(function() c:SetAttribute("Invulnerable", false) end)
-					pcall(function() c:SetAttribute("SpawnProtection", false) end)
-					pcall(function() c:SetAttribute("SpawnProtect", false) end)
-					pcall(function() c:SetAttribute("IsImmune", false) end)
-					pcall(function() c:SetAttribute("iFrame", false) end)
-					for _, d in ipairs(c:GetChildren()) do
-						if d:IsA("ForceField") then pcall(function() d:Destroy() end) end
-					end
-				end)
-
-				if tick() - lastShot < 0.015 then return end
-				lastShot = tick()
-
-				local multi = math.clamp(tonumber(S.RageMulti) or 14, 4, 28)
-				if S.RageBoost ~= false then multi = math.max(multi, 14) end
-				local frames = math.clamp(tonumber(S.ShootFrames) or 3, 1, 5)
-
-				local hp = head.Position
-				local camPos = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position or hp
-				local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-				local myPos = myRoot and myRoot.Position or camPos
-				local origins = {
-					hp,
-					hp + Vector3.new(0, 0.05, 0),
-					hp + Vector3.new(0, 0.15, 0),
-					hp + Vector3.new(0, 0.3, 0),
-					hp + Vector3.new(0.1, 0.1, 0),
-					hp + Vector3.new(-0.1, 0.1, 0),
-					hp + Vector3.new(0, 0.5, 0),
-					camPos,
-					myPos + Vector3.new(0, 1.4, 0),
-				}
-
-				for frame = 1, frames do
-					for n = 1, multi do
-						local origin = origins[((n + frame - 2) % #origins) + 1]
-						pcall(function()
-							_useItemRemote:FireServer(objId, _ssEnum, buildShot(origin, head), nil)
-						end)
-					end
-				end
-			end)
-
-			-- TP / DESYNC / UNDERGROUND / MIX (merged)
-			_halmu.desyncHB = RunService.Heartbeat:Connect(function()
-				if not _halmu.rageEnabled then
-					_halmu.RealCFrame = nil
-					return
-				end
-				local style = tostring(S.RageStyle or "Mix")
+				-- desync (VK style): server above head, restore on render
+				local doDesync = (S.Desync ~= false)
 				local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-				if not hrp or not _halmu.currentTarget then
-					_halmu.RealCFrame = nil
-					return
-				end
-				local tp = _halmu.currentTarget.Position
-				local dist = tonumber(_halmu.desyncDist) or 3
-				local depth = tonumber(S.UndergroundDepth) or 8
-				local t = tick()
-
-				-- always snapshot real for styles that restore view
-				local needRestore = (style == "Desync" or style == "Mix" or style == "Underground")
-				if needRestore then
+				if hrp and head and doDesync then
 					if not _halmu.RealCFrame then
 						_halmu.RealCFrame = hrp.CFrame
 						_halmu.RealVelocity = hrp.AssemblyLinearVelocity
 					end
-					local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+					local hum = LP.Character:FindFirstChildOfClass("Humanoid")
 					if hum and hum.MoveDirection.Magnitude > 0.05 then
 						_halmu.RealCFrame = _halmu.RealCFrame + hum.MoveDirection * (hum.WalkSpeed or 16) * (1 / 60)
 					end
+					-- Honyang angled offset + VK height desync
+					local radius = math.clamp(tonumber(S.RageRadius) or 3, 1, 8)
+					local angleDeg = math.clamp(tonumber(S.RageAngle) or 180, 0, 360)
+					local height = tonumber(S.RageHeight)
+					if height == nil then height = 0 end
+					local dd = tonumber(_halmu.desyncDist) or tonumber(S.DesyncDist) or 3
+					local model = head:FindFirstAncestorOfClass("Model") or head.Parent
+					local tRoot = model and model:FindFirstChild("HumanoidRootPart")
+					local base = (tRoot and tRoot.CFrame) or CFrame.new(head.Position)
+					local rad = math.rad(angleDeg)
+					local offset = CFrame.new(math.sin(rad) * radius, height + dd * 0.15, math.cos(rad) * radius)
+					local desyncPos = (base * offset).Position
+					-- also add pure above mode blend
+					desyncPos = desyncPos + Vector3.new(0, math.max(0, dd - 1), 0) * 0.35
+					hrp.CFrame = CFrame.new(desyncPos, head.Position)
+					hrp.AssemblyLinearVelocity = Vector3.zero
 				end
 
-				local serverCF
-				if style == "TP" then
-					-- hard stay above target (visible)
-					serverCF = CFrame.new(tp + Vector3.new(0, dist, 0), tp)
-					_halmu.RealCFrame = nil
-				elseif style == "Underground" then
-					-- under target + slight orbit
-					local ang = t * 4
-					serverCF = CFrame.new(tp + Vector3.new(math.cos(ang) * 2, -depth, math.sin(ang) * 2), tp)
-				elseif style == "Desync" then
-					serverCF = CFrame.new(tp + Vector3.new(0, dist, 0), tp)
-				else -- Mix: cycle under / above / side
-					local phase = math.floor(t * 3) % 3
-					if phase == 0 then
-						serverCF = CFrame.new(tp + Vector3.new(0, dist, 0), tp)
-					elseif phase == 1 then
-						serverCF = CFrame.new(tp + Vector3.new(0, -depth, 0), tp)
-					else
-						local ang = t * 5
-						serverCF = CFrame.new(tp + Vector3.new(math.cos(ang) * 6, 2, math.sin(ang) * 6), tp)
+				if not head then return end
+				-- ultra rage: almost every frame
+				if tick() - lastRage < 0.008 then return end
+				lastRage = tick()
+
+				-- strip ALL protect flags every shot (no wait)
+				pcall(function()
+					local c = head:FindFirstAncestorOfClass("Model") or head.Parent
+					if not c then return end
+					local keys = {
+						"CanTakeDamage","Invulnerable","Invincibility","SpawnProtection","SpawnProtect",
+						"Protected","IsImmune","Immunity","iFrame","IFrame","SpawnGuard","GodMode",
+						"NoDamage","ForceField","Shielded","HasShield","DamageDisabled","Untargetable",
+					}
+					for _, k in ipairs(keys) do
+						pcall(function()
+							if k == "CanTakeDamage" then c:SetAttribute(k, true)
+							else c:SetAttribute(k, false) end
+						end)
+						local hum = c:FindFirstChildOfClass("Humanoid")
+						if hum then
+							pcall(function()
+								if k == "CanTakeDamage" then hum:SetAttribute(k, true)
+								else hum:SetAttribute(k, false) end
+							end)
+						end
+					end
+					for _, d in ipairs(c:GetDescendants()) do
+						if d:IsA("ForceField") then pcall(function() d:Destroy() end) end
+					end
+				end)
+
+				-- MASS fire: many origins x many repeats (VK encodeShot)
+				local cam = workspace.CurrentCamera
+				local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+				local hp = head.Position
+				local camPos = cam and cam.CFrame.Position or hp
+				local rootPos = root and root.Position or hp
+				local oid = getOid()
+				ensure()
+				if not oid or not _useItemRemote or not _ssEnum then return end
+
+				local origins = {
+					hp + Vector3.new(0, 0.05, 0),
+					hp + Vector3.new(0, 0.12, 0),
+					hp + Vector3.new(0, 0.2, 0),
+					hp + Vector3.new(0, 0.35, 0),
+					hp + Vector3.new(0, 0.5, 0),
+					hp + Vector3.new(0.1, 0.15, 0),
+					hp + Vector3.new(-0.1, 0.15, 0),
+					hp + Vector3.new(0.15, 0.25, 0.1),
+					hp + Vector3.new(-0.15, 0.25, -0.1),
+					hp + Vector3.new(0, 1.0, 0),
+					hp + Vector3.new(0, 1.5, 0),
+					camPos,
+					camPos + Vector3.new(0, 0.5, 0),
+					rootPos + Vector3.new(0, 1.4, 0),
+					rootPos + Vector3.new(0, 0.8, 0),
+					hp,
+				}
+
+				local multi = math.clamp(tonumber(S.RageMulti) or 20, 12, 40)
+				if S.RageBoost ~= false then multi = math.max(multi, 24) end
+				local frames = math.clamp(tonumber(S.ShootFrames) or 5, 3, 8)
+
+				for frame = 1, frames do
+					for n = 1, multi do
+						local from = origins[((n + frame - 2) % #origins) + 1]
+						local data = encodeShot(from, hp, head)
+						if data then
+							pcall(function()
+								_useItemRemote:FireServer(oid, _ssEnum, data, nil)
+							end)
+						end
 					end
 				end
-
-				hrp.CFrame = serverCF
-				hrp.AssemblyLinearVelocity = Vector3.zero
+				-- VK dual modes always
+				pcall(function() fireAt(head, "target") end)
+				pcall(function() fireAt(head, "camera") end)
 			end)
 
 			pcall(function()
@@ -5593,6 +5682,349 @@ task.spawn(function()
 	print("[CuteGirl] Zombie Tower: rage desync (screen stays)")
 end)
 
+-- ========== Honyang ports: HeadTP / BackTP / HitLog ==========
+task.spawn(function()
+	local Players = game:GetService("Players")
+	local RunService = game:GetService("RunService")
+	local LP = Players.LocalPlayer
+
+	local function nearestEnemy()
+		local my = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+		if not my then return nil end
+		local best, bestD = nil, 1e9
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= LP and p.Character then
+				local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+				local hum = p.Character:FindFirstChildOfClass("Humanoid")
+				if hrp and hum and hum.Health > 0 then
+					local d = (my.Position - hrp.Position).Magnitude
+					if d < bestD then bestD, best = d, p.Character end
+				end
+			end
+		end
+		return best
+	end
+
+	RunService.RenderStepped:Connect(function()
+		local S = _G.HUB or {}
+		if not (S.HeadTP or S.BackTP) then return end
+		local char = LP.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		if not hrp or not hum or hum.Health <= 0 then return end
+		local target = nearestEnemy()
+		if not target then return end
+		local tr = target:FindFirstChild("HumanoidRootPart")
+		if not tr then return end
+		if S.HeadTP then
+			hrp.CFrame = tr.CFrame + Vector3.new(0, 15, 0)
+		elseif S.BackTP then
+			hrp.CFrame = tr.CFrame * CFrame.new(0, 0, 5)
+		end
+	end)
+
+	-- Hit log GUI
+	local CoreGui = game:GetService("CoreGui")
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "CuteGirlHitLog"
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 50
+	pcall(function() gui.Parent = (gethui and gethui()) or CoreGui end)
+	if not gui.Parent then gui.Parent = LP:WaitForChild("PlayerGui") end
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.fromOffset(180, 140)
+	frame.Position = UDim2.new(1, -190, 0.35, 0)
+	frame.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
+	frame.BackgroundTransparency = 0.25
+	frame.BorderSizePixel = 0
+	frame.Visible = false
+	frame.Parent = gui
+	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, -8, 0, 18)
+	title.Position = UDim2.fromOffset(4, 4)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.Code
+	title.TextSize = 11
+	title.TextColor3 = Color3.fromRGB(255, 70, 110)
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Text = "hit log"
+	title.Parent = frame
+	local list = Instance.new("TextLabel")
+	list.Size = UDim2.new(1, -8, 1, -24)
+	list.Position = UDim2.fromOffset(4, 22)
+	list.BackgroundTransparency = 1
+	list.Font = Enum.Font.Code
+	list.TextSize = 11
+	list.TextColor3 = Color3.fromRGB(230, 230, 240)
+	list.TextXAlignment = Enum.TextXAlignment.Left
+	list.TextYAlignment = Enum.TextYAlignment.Top
+	list.Text = ""
+	list.Parent = frame
+	local lines = {}
+	local lastAtk = 0
+	local healthMap = {}
+
+	local function push(name, dmg)
+		table.insert(lines, 1, string.format("-%d  %s", dmg, name))
+		while #lines > 8 do table.remove(lines) end
+		list.Text = table.concat(lines, "\n")
+	end
+
+	_G.CuteGirlNoteAttack = function()
+		lastAtk = tick()
+	end
+
+	local function track(plr)
+		if plr == LP then return end
+		local function onChar(char)
+			local hum = char:WaitForChild("Humanoid", 5)
+			if not hum then return end
+			healthMap[plr] = hum.Health
+			hum.HealthChanged:Connect(function(hp)
+				local old = healthMap[plr] or hp
+				local diff = old - hp
+				healthMap[plr] = hp
+				local S = _G.HUB or {}
+				if S.HitLog and diff > 0 and (tick() - lastAtk) < 0.35 then
+					push(plr.Name, math.floor(diff))
+				end
+			end)
+		end
+		plr.CharacterAdded:Connect(onChar)
+		if plr.Character then task.spawn(onChar, plr.Character) end
+	end
+	for _, p in ipairs(Players:GetPlayers()) do track(p) end
+	Players.PlayerAdded:Connect(track)
+
+	RunService.Heartbeat:Connect(function()
+		local S = _G.HUB or {}
+		frame.Visible = S.HitLog == true
+	end)
+
+	-- mark attack on rage/silent via existing UseItem if possible
+	pcall(function()
+		local remote = game:GetService("ReplicatedStorage").Remotes.Replication.Fighter.UseItem
+		remote.OnClientEvent:Connect(function() end)
+	end)
+	-- also set lastAtk when rage fires via poll of HUB
+	local prevRage = false
+	RunService.Heartbeat:Connect(function()
+		local S = _G.HUB or {}
+		if S.RageBot or S.SilentAim or S.Aimbot then
+			if tick() % 1 < 0.05 then lastAtk = tick() end
+		end
+	end)
+end)
+local KICIA_SKYBOXES = {
+	Aesthetic = {SkyboxUp="rbxassetid://1417494643", SkyboxBk="rbxassetid://1417494030", SkyboxFt="rbxassetid://1417494253", SkyboxLf="rbxassetid://1417494402", SkyboxRt="rbxassetid://1417494499", SkyboxDn="rbxassetid://1417494146"},
+	Aesthetic2 = {SkyboxUp="rbxassetid://600835177", SkyboxBk="rbxassetid://600830446", SkyboxFt="rbxassetid://600832720", SkyboxLf="rbxassetid://600886090", SkyboxRt="rbxassetid://600833862", SkyboxDn="rbxassetid://600831635"},
+	Aesthetic3 = {SkyboxUp="rbxassetid://151165227", SkyboxBk="rbxassetid://151165214", SkyboxFt="rbxassetid://151165224", SkyboxLf="rbxassetid://151165191", SkyboxRt="rbxassetid://151165206", SkyboxDn="rbxassetid://151165197"},
+	AestheticMountains = {SkyboxUp="rbxassetid://15470207755", SkyboxBk="rbxassetid://15470198023", SkyboxFt="rbxassetid://15470200128", SkyboxLf="rbxassetid://15470202648", SkyboxRt="rbxassetid://15470204862", SkyboxDn="rbxassetid://15470151245"},
+	Alien = {SkyboxUp="rbxassetid://159248176", SkyboxBk="rbxassetid://159248188", SkyboxFt="rbxassetid://159248187", SkyboxLf="rbxassetid://159248173", SkyboxRt="rbxassetid://159248192", SkyboxDn="rbxassetid://159248183"},
+	Ame = {SkyboxUp="rbxassetid://160186148", SkyboxBk="rbxassetid://160185927", SkyboxFt="rbxassetid://160186027", SkyboxLf="rbxassetid://160186075", SkyboxRt="rbxassetid://160186126", SkyboxDn="rbxassetid://160185945"},
+	Antartica = {SkyboxUp="rbxassetid://2118766003", SkyboxBk="rbxassetid://2118763079", SkyboxFt="rbxassetid://2118765204", SkyboxLf="rbxassetid://2118764070", SkyboxRt="rbxassetid://2118761853", SkyboxDn="rbxassetid://2118766919"},
+	Art = {SkyboxUp="rbxassetid://9831769868", SkyboxBk="rbxassetid://9831762777", SkyboxFt="rbxassetid://9831766232", SkyboxLf="rbxassetid://9831768023", SkyboxRt="rbxassetid://9831768909", SkyboxDn="rbxassetid://9831764283"},
+	Beach = {SkyboxUp="rbxassetid://173380790", SkyboxBk="rbxassetid://173380597", SkyboxFt="rbxassetid://173380642", SkyboxLf="rbxassetid://173380671", SkyboxRt="rbxassetid://173380774", SkyboxDn="rbxassetid://173380627"},
+	BetterNight = {SkyboxUp="rbxassetid://15470303050", SkyboxBk="rbxassetid://15470289121", SkyboxFt="rbxassetid://15470294431", SkyboxLf="rbxassetid://15470297162", SkyboxRt="rbxassetid://15470299887", SkyboxDn="rbxassetid://15470291746"},
+	BetterNight2 = {SkyboxUp="rbxassetid://248431605", SkyboxBk="rbxassetid://248431616", SkyboxFt="rbxassetid://248431598", SkyboxLf="rbxassetid://248431686", SkyboxRt="rbxassetid://248431611", SkyboxDn="rbxassetid://248431677"},
+	BetterNight3 = {SkyboxUp="rbxassetid://2670644331", SkyboxBk="rbxassetid://2670643994", SkyboxFt="rbxassetid://2670643214", SkyboxLf="rbxassetid://2670643070", SkyboxRt="rbxassetid://2670644173", SkyboxDn="rbxassetid://2670643365"},
+	BetterSky = {SkyboxUp="rbxassetid://591059642", SkyboxBk="rbxassetid://591058823", SkyboxFt="rbxassetid://591058104", SkyboxLf="rbxassetid://591057861", SkyboxRt="rbxassetid://591057625", SkyboxDn="rbxassetid://591059876"},
+	Blizzard = {SkyboxUp="rbxassetid://16653228333", SkyboxBk="rbxassetid://16653221738", SkyboxFt="rbxassetid://16653224051", SkyboxLf="rbxassetid://16653225849", SkyboxRt="rbxassetid://16653227200", SkyboxDn="rbxassetid://16653222701"},
+	BlueClouds = {SkyboxUp="rbxassetid://591059642", SkyboxBk="rbxassetid://591058823", SkyboxFt="rbxassetid://591058104", SkyboxLf="rbxassetid://591057861", SkyboxRt="rbxassetid://591057625", SkyboxDn="rbxassetid://591059876"},
+	BluePlanet = {SkyboxUp="rbxassetid://16889004122", SkyboxBk="rbxassetid://16888989874", SkyboxFt="rbxassetid://16888995219", SkyboxLf="rbxassetid://16888998994", SkyboxRt="rbxassetid://16889000916", SkyboxDn="rbxassetid://16888991855"},
+	BlueSpace = {SkyboxUp="rbxassetid://16876552681", SkyboxBk="rbxassetid://16876541778", SkyboxFt="rbxassetid://16876546384", SkyboxLf="rbxassetid://16876548320", SkyboxRt="rbxassetid://16876550345", SkyboxDn="rbxassetid://16876543880"},
+	Cloudy = {SkyboxUp="rbxassetid://4495867486", SkyboxBk="rbxassetid://4495864450", SkyboxFt="rbxassetid://4495865458", SkyboxLf="rbxassetid://4495866035", SkyboxRt="rbxassetid://4495866584", SkyboxDn="rbxassetid://4495864887"},
+	DarkClouds = {SkyboxUp="rbxassetid://190477146", SkyboxBk="rbxassetid://190477248", SkyboxFt="rbxassetid://190477200", SkyboxLf="rbxassetid://190477185", SkyboxRt="rbxassetid://190477166", SkyboxDn="rbxassetid://190477222"},
+	DarkMountains = {SkyboxUp="rbxassetid://5098819127", SkyboxBk="rbxassetid://5098814730", SkyboxFt="rbxassetid://5098815653", SkyboxLf="rbxassetid://5098816155", SkyboxRt="rbxassetid://5098820352", SkyboxDn="rbxassetid://5098815227"},
+	DarkishPink = {SkyboxUp="rbxassetid://570555929", SkyboxBk="rbxassetid://570555736", SkyboxFt="rbxassetid://570555800", SkyboxLf="rbxassetid://570555840", SkyboxRt="rbxassetid://570555882", SkyboxDn="rbxassetid://570555964"},
+	Dawn = {SkyboxUp="rbxassetid://250381047", SkyboxBk="rbxassetid://250381017", SkyboxFt="rbxassetid://250380916", SkyboxLf="rbxassetid://250380953", SkyboxRt="rbxassetid://250380985", SkyboxDn="rbxassetid://254156892"},
+	FPSBoost = {SkyboxUp="rbxassetid://11457548274", SkyboxBk="rbxassetid://11457548274", SkyboxFt="rbxassetid://11457548274", SkyboxLf="rbxassetid://11457548274", SkyboxRt="rbxassetid://11457548274", SkyboxDn="rbxassetid://11457548274"},
+	FakeClouds = {SkyboxUp="rbxassetid://8496897504", SkyboxBk="rbxassetid://8496892810", SkyboxFt="rbxassetid://8496892810", SkyboxLf="rbxassetid://8496892810", SkyboxRt="rbxassetid://8496892810", SkyboxDn="rbxassetid://8496896250"},
+	Flame = {SkyboxUp="rbxassetid://6286790025", SkyboxBk="rbxassetid://6286780109", SkyboxFt="rbxassetid://6286784186", SkyboxLf="rbxassetid://6286785801", SkyboxRt="rbxassetid://6286788245", SkyboxDn="rbxassetid://6286782353"},
+	FlamingSunset = {SkyboxUp="rbxassetid://415688354", SkyboxBk="rbxassetid://415688378", SkyboxFt="rbxassetid://415688242", SkyboxLf="rbxassetid://415688310", SkyboxRt="rbxassetid://415688274", SkyboxDn="rbxassetid://415688193"},
+	FunnyStorm = {SkyboxUp="rbxassetid://6280942402", SkyboxBk="rbxassetid://6280934001", SkyboxFt="rbxassetid://6280936575", SkyboxLf="rbxassetid://6280938749", SkyboxRt="rbxassetid://6280940989", SkyboxDn="rbxassetid://6280935347"},
+	Galaxy = {SkyboxUp="rbxassetid://159454288", SkyboxBk="rbxassetid://159454299", SkyboxFt="rbxassetid://159454293", SkyboxLf="rbxassetid://159454293", SkyboxRt="rbxassetid://159454293", SkyboxDn="rbxassetid://159454296"},
+	Galaxy2 = {SkyboxUp="rbxassetid://14164405298", SkyboxBk="rbxassetid://14164368678", SkyboxFt="rbxassetid://14164389230", SkyboxLf="rbxassetid://14164398493", SkyboxRt="rbxassetid://14164402782", SkyboxDn="rbxassetid://14164386126"},
+	Galaxy3 = {SkyboxUp="rbxassetid://14543371676", SkyboxBk="rbxassetid://14543264135", SkyboxFt="rbxassetid://14543257810", SkyboxLf="rbxassetid://14543275895", SkyboxRt="rbxassetid://14543280890", SkyboxDn="rbxassetid://14543358958"},
+	GreenHaze = {SkyboxUp="rbxassetid://160193458", SkyboxBk="rbxassetid://160193404", SkyboxFt="rbxassetid://160193461", SkyboxLf="rbxassetid://160193469", SkyboxRt="rbxassetid://160193463", SkyboxDn="rbxassetid://160193466"},
+	Hell = {SkyboxUp="rbxassetid://11730857150", SkyboxBk="rbxassetid://11730840088", SkyboxFt="rbxassetid://11730849615", SkyboxLf="rbxassetid://11730852920", SkyboxRt="rbxassetid://11730855491", SkyboxDn="rbxassetid://11730842997"},
+	Lunar = {SkyboxUp="rbxassetid://179724054", SkyboxBk="rbxassetid://179723991", SkyboxFt="rbxassetid://179724018", SkyboxLf="rbxassetid://179724029", SkyboxRt="rbxassetid://179724037", SkyboxDn="rbxassetid://179724005"},
+	LunarNight = {SkyboxUp="rbxassetid://187712111", SkyboxBk="rbxassetid://187713366", SkyboxFt="rbxassetid://187712836", SkyboxLf="rbxassetid://187713755", SkyboxRt="rbxassetid://187714525", SkyboxDn="rbxassetid://187712428"},
+	LunarNight2 = {SkyboxUp="rbxassetid://14365026442", SkyboxBk="rbxassetid://14365026085", SkyboxFt="rbxassetid://14365025735", SkyboxLf="rbxassetid://14365025904", SkyboxRt="rbxassetid://14365025444", SkyboxDn="rbxassetid://14365026242"},
+	MagentaOrange = {SkyboxUp="rbxassetid://566616187", SkyboxBk="rbxassetid://566616113", SkyboxFt="rbxassetid://566616141", SkyboxLf="rbxassetid://566616044", SkyboxRt="rbxassetid://566616082", SkyboxDn="rbxassetid://566616232"},
+	Midnight = {SkyboxUp="rbxassetid://154185031", SkyboxBk="rbxassetid://154185004", SkyboxFt="rbxassetid://154185021", SkyboxLf="rbxassetid://154184943", SkyboxRt="rbxassetid://154184972", SkyboxDn="rbxassetid://154184960"},
+	Milkyway = {SkyboxUp="rbxassetid://137817405681365", SkyboxBk="rbxassetid://129876530632297", SkyboxFt="rbxassetid://104400530594543", SkyboxLf="rbxassetid://73372229972523", SkyboxRt="rbxassetid://87408857415924", SkyboxDn="rbxassetid://108406529909981"},
+	Moon = {SkyboxUp="rbxassetid://17489393055", SkyboxBk="rbxassetid://17489386489", SkyboxFt="rbxassetid://17489388310", SkyboxLf="rbxassetid://17489389632", SkyboxRt="rbxassetid://17489391101", SkyboxDn="rbxassetid://17489387417"},
+	Mountains = {SkyboxUp="rbxassetid://15359412677", SkyboxBk="rbxassetid://15359410490", SkyboxFt="rbxassetid://15359412131", SkyboxLf="rbxassetid://15359411633", SkyboxRt="rbxassetid://15359417656", SkyboxDn="rbxassetid://15359411132"},
+	Nebula = {SkyboxUp="rbxassetid://5260824661", SkyboxBk="rbxassetid://5260808177", SkyboxFt="rbxassetid://5260817288", SkyboxLf="rbxassetid://5260800833", SkyboxRt="rbxassetid://5260811073", SkyboxDn="rbxassetid://5260653793"},
+	Nebula2 = {SkyboxUp="rbxassetid://16932810138", SkyboxBk="rbxassetid://16932794531", SkyboxFt="rbxassetid://16932800523", SkyboxLf="rbxassetid://16932803722", SkyboxRt="rbxassetid://16932806825", SkyboxDn="rbxassetid://16932797813"},
+	Nebula3 = {SkyboxUp="rbxassetid://17839226876", SkyboxBk="rbxassetid://17839210699", SkyboxFt="rbxassetid://17839218166", SkyboxLf="rbxassetid://17839220800", SkyboxRt="rbxassetid://17839223605", SkyboxDn="rbxassetid://17839215896"},
+	Nebula4 = {SkyboxUp="rbxassetid://17103639457", SkyboxBk="rbxassetid://17103618635", SkyboxFt="rbxassetid://17103624898", SkyboxLf="rbxassetid://17103628153", SkyboxRt="rbxassetid://17103636666", SkyboxDn="rbxassetid://17103622190"},
+	Nebula5 = {SkyboxUp="rbxassetid://17124369657", SkyboxBk="rbxassetid://17124357467", SkyboxFt="rbxassetid://17124362093", SkyboxLf="rbxassetid://17124365127", SkyboxRt="rbxassetid://17124367200", SkyboxDn="rbxassetid://17124359797"},
+	Nebula6 = {SkyboxUp="rbxassetid://16694204069", SkyboxBk="rbxassetid://16694187412", SkyboxFt="rbxassetid://16694194795", SkyboxLf="rbxassetid://16694197080", SkyboxRt="rbxassetid://16694200892", SkyboxDn="rbxassetid://16694190947"},
+	NetherWorld = {SkyboxUp="rbxassetid://14365019327", SkyboxBk="rbxassetid://14365019002", SkyboxFt="rbxassetid://14365018399", SkyboxLf="rbxassetid://14365018705", SkyboxRt="rbxassetid://14365018143", SkyboxDn="rbxassetid://14365023350"},
+	NewYork = {SkyboxUp="rbxassetid://11333967970", SkyboxBk="rbxassetid://11333973069", SkyboxFt="rbxassetid://11333964303", SkyboxLf="rbxassetid://11333971332", SkyboxRt="rbxassetid://11333982864", SkyboxDn="rbxassetid://11333969768"},
+	NightMountains = {SkyboxUp="rbxassetid://264907379", SkyboxBk="rbxassetid://264908339", SkyboxFt="rbxassetid://264909420", SkyboxLf="rbxassetid://264909758", SkyboxRt="rbxassetid://264908886", SkyboxDn="rbxassetid://264907909"},
+	Orange = {SkyboxUp="rbxassetid://150939082", SkyboxBk="rbxassetid://150939022", SkyboxFt="rbxassetid://150939047", SkyboxLf="rbxassetid://150939056", SkyboxRt="rbxassetid://150939063", SkyboxDn="rbxassetid://150939038"},
+	OverPlanet = {SkyboxUp="rbxassetid://165052345", SkyboxBk="rbxassetid://165052268", SkyboxFt="rbxassetid://165052328", SkyboxLf="rbxassetid://165052365", SkyboxRt="rbxassetid://165052306", SkyboxDn="rbxassetid://165052286"},
+	Pastel = {SkyboxUp="rbxassetid://2128462236", SkyboxBk="rbxassetid://2128458653", SkyboxFt="rbxassetid://2128458653", SkyboxLf="rbxassetid://2128462027", SkyboxRt="rbxassetid://2128462027", SkyboxDn="rbxassetid://2128462480"},
+	Pink = {SkyboxUp="rbxassetid://271077958", SkyboxBk="rbxassetid://271042516", SkyboxFt="rbxassetid://271042556", SkyboxLf="rbxassetid://271042310", SkyboxRt="rbxassetid://271042467", SkyboxDn="rbxassetid://271077243"},
+	PinkArt = {SkyboxUp="rbxassetid://79190209626172", SkyboxBk="rbxassetid://71607054149497", SkyboxFt="rbxassetid://104560113223878", SkyboxLf="rbxassetid://80395333901607", SkyboxRt="rbxassetid://87570388049514", SkyboxDn="rbxassetid://78865378050055"},
+	PinkMountains = {SkyboxUp="rbxassetid://160188588", SkyboxBk="rbxassetid://160188495", SkyboxFt="rbxassetid://160188609", SkyboxLf="rbxassetid://160188589", SkyboxRt="rbxassetid://160188597", SkyboxDn="rbxassetid://160188614"},
+	Pinkie = {SkyboxUp="rbxassetid://11554996247", SkyboxBk="rbxassetid://11555017034", SkyboxFt="rbxassetid://11555010145", SkyboxLf="rbxassetid://11555006545", SkyboxRt="rbxassetid://11555000712", SkyboxDn="rbxassetid://11555013415"},
+	Purple = {SkyboxUp="rbxassetid://8539981085", SkyboxBk="rbxassetid://8539982183", SkyboxFt="rbxassetid://8539981721", SkyboxLf="rbxassetid://8539981424", SkyboxRt="rbxassetid://8539980766", SkyboxDn="rbxassetid://8539981943"},
+	Purple2 = {SkyboxUp="rbxassetid://8107849791", SkyboxBk="rbxassetid://8107841671", SkyboxFt="rbxassetid://8107841671", SkyboxLf="rbxassetid://8107841671", SkyboxRt="rbxassetid://8107841671", SkyboxDn="rbxassetid://6444884785"},
+	Purple3 = {SkyboxUp="rbxassetid://433274285", SkyboxBk="rbxassetid://433274085", SkyboxFt="rbxassetid://433274131", SkyboxLf="rbxassetid://433274370", SkyboxRt="rbxassetid://433274429", SkyboxDn="rbxassetid://433274194"},
+	PurpleClouds = {SkyboxUp="rbxassetid://570557727", SkyboxBk="rbxassetid://570557514", SkyboxFt="rbxassetid://570557559", SkyboxLf="rbxassetid://570557620", SkyboxRt="rbxassetid://570557672", SkyboxDn="rbxassetid://570557775"},
+	PurpleMountains = {SkyboxUp="rbxassetid://17901365106", SkyboxBk="rbxassetid://17901353811", SkyboxFt="rbxassetid://17901356262", SkyboxLf="rbxassetid://17901359687", SkyboxRt="rbxassetid://17901362326", SkyboxDn="rbxassetid://17901366771"},
+	PurpleNight = {SkyboxUp="rbxassetid://5084576400", SkyboxBk="rbxassetid://5260808177", SkyboxFt="rbxassetid://5260817288", SkyboxLf="rbxassetid://5260800833", SkyboxRt="rbxassetid://5260800833", SkyboxDn="rbxassetid://5260653793"},
+	PurplePlanet = {SkyboxUp="rbxassetid://16262366016", SkyboxBk="rbxassetid://16262356578", SkyboxFt="rbxassetid://16262360469", SkyboxLf="rbxassetid://16262362003", SkyboxRt="rbxassetid://16262363873", SkyboxDn="rbxassetid://16262358026"},
+	PurpleSpace = {SkyboxUp="rbxassetid://15983964246", SkyboxBk="rbxassetid://15983968922", SkyboxFt="rbxassetid://5260817288", SkyboxLf="rbxassetid://15983967420", SkyboxRt="rbxassetid://15983966246", SkyboxDn="rbxassetid://15983966825"},
+	Realistic = {SkyboxUp="rbxassetid://402560052", SkyboxBk="rbxassetid://402559900", SkyboxFt="rbxassetid://402559953", SkyboxLf="rbxassetid://402559983", SkyboxRt="rbxassetid://402560019", SkyboxDn="rbxassetid://402559927"},
+	RedNight = {SkyboxUp="rbxassetid://401664936", SkyboxBk="rbxassetid://401664839", SkyboxFt="rbxassetid://401664960", SkyboxLf="rbxassetid://401664881", SkyboxRt="rbxassetid://401664901", SkyboxDn="rbxassetid://401664862"},
+	Retro = {SkyboxUp="rbxassetid://16642401907", SkyboxBk="rbxassetid://16642396302", SkyboxFt="rbxassetid://16642398372", SkyboxLf="rbxassetid://16642399309", SkyboxRt="rbxassetid://16642400745", SkyboxDn="rbxassetid://16642397027"},
+	Space = {SkyboxUp="rbxassetid://166510114", SkyboxBk="rbxassetid://166509999", SkyboxFt="rbxassetid://166510116", SkyboxLf="rbxassetid://166510092", SkyboxRt="rbxassetid://166510131", SkyboxDn="rbxassetid://166510057"},
+	Space2 = {SkyboxUp="rbxassetid://11844053742", SkyboxBk="rbxassetid://11844076072", SkyboxFt="rbxassetid://11844067209", SkyboxLf="rbxassetid://11844063543", SkyboxRt="rbxassetid://11844058446", SkyboxDn="rbxassetid://11844069700"},
+	Storm = {SkyboxUp="rbxassetid://1618913654", SkyboxBk="rbxassetid://1618912481", SkyboxFt="rbxassetid://1618913244", SkyboxLf="rbxassetid://1618912849", SkyboxRt="rbxassetid://1618911568", SkyboxDn="rbxassetid://1618913943"},
+	Valentines = {SkyboxUp="rbxassetid://11427771954", SkyboxBk="rbxassetid://11427769401", SkyboxFt="rbxassetid://11427769401", SkyboxLf="rbxassetid://11427769401", SkyboxRt="rbxassetid://11427769401", SkyboxDn="rbxassetid://11427770685"},
+	Winter = {SkyboxUp="rbxassetid://155674931", SkyboxBk="rbxassetid://155657655", SkyboxFt="rbxassetid://155657609", SkyboxLf="rbxassetid://155657671", SkyboxRt="rbxassetid://155657619", SkyboxDn="rbxassetid://155674246"},
+}
+
+_G.CuteGirlSkyNames = {}
+for n in pairs(KICIA_SKYBOXES) do
+	table.insert(_G.CuteGirlSkyNames, n)
+end
+table.sort(_G.CuteGirlSkyNames)
+
+_G.CuteGirlApplySky = function()
+	local Lighting = game:GetService("Lighting")
+	local S = _G.HUB or {}
+	local old = Lighting:FindFirstChild("CuteGirlKiciaSky")
+	if old then old:Destroy() end
+	if not S.SkyboxEnabled then return end
+	local preset = S.SkyboxPreset or "Galaxy"
+	local data = KICIA_SKYBOXES[preset]
+	if not data then
+		-- try case-insensitive
+		for k, v in pairs(KICIA_SKYBOXES) do
+			if string.lower(k) == string.lower(preset) then data = v break end
+		end
+	end
+	if not data then return end
+	local sky = Instance.new("Sky")
+	sky.Name = "CuteGirlKiciaSky"
+	sky.SkyboxBk = data.SkyboxBk or ""
+	sky.SkyboxDn = data.SkyboxDn or ""
+	sky.SkyboxFt = data.SkyboxFt or ""
+	sky.SkyboxLf = data.SkyboxLf or ""
+	sky.SkyboxRt = data.SkyboxRt or ""
+	sky.SkyboxUp = data.SkyboxUp or ""
+	sky.Parent = Lighting
+end
+
+local KICIA_EMOTE_IDS = {
+	["Bodybuilder Posing"] = "rbxassetid://10713990381",
+	["Floss Dance"] = "rbxassetid://10714340543",
+	["Hyper Circle Scootin'"] = "rbxassetid://73171328255147",
+	["Dolphin Dance"] = "rbxassetid://10714068222",
+	["Halloween Dance 2"] = "rbxassetid://15963314052",
+	["Standing Twerk"] = "rbxassetid://126275747804327",
+	["Breakdancing"] = "rbxassetid://10214311282",
+	["Fish Air Swimming"] = "rbxassetid://112082806790047",
+	["Gangnam Style"] = "rbxassetid://129764254213842",
+	["Cat Girl Bounce"] = "rbxassetid://103606174140721",
+	["Hype Dance"] = "rbxassetid://10714369624",
+	["Line Dance"] = "rbxassetid://10714383856",
+	["Floor Driving"] = "rbxassetid://17360699557",
+	["Cha Cha Dance"] = "rbxassetid://10714386947",
+	["Still Standing"] = "rbxassetid://11444443576",
+	["Ballet Spin"] = "rbxassetid://10714293450",
+	["Worm Dance"] = "rbxassetid://112024753958948",
+	["Take the L"] = "rbxassetid://84744842499780",
+	["Wave"] = "rbxassetid://507770239",
+	["Laugh"] = "rbxassetid://507770818",
+	["Point"] = "rbxassetid://507770453",
+	["Default Dance"] = "rbxassetid://507777826",
+	["T-Pose"] = "rbxassetid://3333499508",
+}
+
+_G.CuteGirlPlayEmote = function(name)
+	if not name or name == "None" then return end
+	local LP = game:GetService("Players").LocalPlayer
+	local char = LP.Character
+	if not char then return end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hum then return end
+
+	-- stop previous
+	pcall(function()
+		for _, tr in ipairs(hum:GetPlayingAnimationTracks()) do
+			if tr.Name == "CuteGirlEmote" or (tr.Animation and tr.Animation.Name == "CuteGirlEmote") then
+				tr:Stop(0.1)
+			end
+		end
+	end)
+
+	-- EmoteController by name
+	pcall(function()
+		local ctrl = require(LP.PlayerScripts.Controllers.EmoteController)
+		if ctrl then
+			if ctrl.UseEmote then ctrl:UseEmote(name) return end
+			if ctrl.Play then ctrl:Play(name) return end
+		end
+	end)
+
+	-- ReplicatedStorage emotes module
+	pcall(function()
+		local RS = game:GetService("ReplicatedStorage")
+		for _, folderName in ipairs({ "Emotes", "Dances", "Animations" }) do
+			local emotes = RS:FindFirstChild(folderName)
+			if not emotes then continue end
+			local mod = emotes:FindFirstChild(name)
+			if not mod then
+				for _, c in ipairs(emotes:GetDescendants()) do
+					if c.Name == name or string.find(string.lower(c.Name), string.lower(name), 1, true) then
+						mod = c
+						break
+					end
+				end
+			end
+			if mod and mod:IsA("ModuleScript") then
+				local e = require(mod)
+				if type(e) == "table" and e.new then
+					local inst = e.new(hum)
+					if inst.PlayClient then task.spawn(inst.PlayClient, inst) end
+					if inst.PlayServer then task.spawn(inst.PlayServer, inst) end
+				end
+			elseif mod and mod:IsA("Animation") then
+				local track = hum:LoadAnimation(mod)
+				track.Name = "CuteGirlEmote"
+				track:Play()
+			end
+		end
+	end)
+
+	-- Kicia animation id (Take the L, Dolphin Dance, etc.)
+	pcall(function()
+		local id = KICIA_EMOTE_IDS[name]
+		if not id then return end
+		local anim = Instance.new("Animation")
+		anim.Name = "CuteGirlEmote"
+		anim.AnimationId = id
+		local track = hum:LoadAnimation(anim)
+		track.Name = "CuteGirlEmote"
+		track.Looped = true
+		track:Play(0.1)
+	end)
+end
 
 
-
+-- refresh dropdown options if library supports SetValues later
+task.defer(function()
+	pcall(function()
+		if Options and Options.SkyPreset and Options.SkyPreset.SetValues then
+			Options.SkyPreset:SetValues(_G.CuteGirlSkyNames)
+		end
+	end)
+end)
