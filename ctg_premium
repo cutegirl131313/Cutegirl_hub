@@ -1,349 +1,4 @@
--- ============================================================
--- KEY SYSTEM + INTRO (sharp / Kicia-like)
--- ============================================================
-do
-	local HttpService = game:GetService("HttpService")
-	local Players = game:GetService("Players")
-	local CoreGui = game:GetService("CoreGui")
-	local TweenService = game:GetService("TweenService")
-	local GuiService = game:GetService("GuiService")
-	local LP = Players.LocalPlayer
-
-	local AUTH_VERSION = 8
-	local AUTH_FILE = "CuteGirlHub/auth_v8.json"
-	local USED_FILE = "CuteGirlHub/used_keys_v8.json"
-	local DISCORD_URL = "https://discord.gg/gBbMcEMQwt"
-
-	local VALID_KEYS = {
-		["CG-W8TK-3N5R-9H2Q-M4XP"] = true,
-		["CG-Y1FJ-6C0L-4B7S-A9VD"] = true,
-		["CG-U5GE-2P8M-7K3W-R6ZN"] = true,
-		["CG-D9XQ-0T4H-1Y6C-J2BF"] = true,
-		["CG-K3MS-8L7N-5V0A-E4RW"] = true,
-		["CG-P6HB-1Z9D-3C8T-G0YJ"] = true,
-		["CG-R2NV-7W5F-0Q1K-L8XS"] = true,
-		["CG-A4CJ-9E2P-6M7B-H3UT"] = true,
-		["CG-F0YK-5R3G-8D1N-S7WQ"] = true,
-		["CG-T7BL-4X6S-2J9E-C5MP"] = true,
-	}
-	local REVOKED = { ["CG-9VFF-TNLT-IC7M-8QOG"] = true }
-	local sessionOK = false
-
-	local function parentGui(sg)
-		pcall(function() sg.Parent = (gethui and gethui()) or CoreGui end)
-		if not sg.Parent then pcall(function() sg.Parent = CoreGui end) end
-		if not sg.Parent then sg.Parent = LP:WaitForChild("PlayerGui", 10) end
-	end
-
-	local function ensureFolder()
-		pcall(function() if makefolder then makefolder("CuteGirlHub") end end)
-	end
-
-	local function readJSON(path)
-		local ok, data = pcall(function()
-			if isfile and isfile(path) and readfile then
-				return HttpService:JSONDecode(readfile(path))
-			end
-			return nil
-		end)
-		return ok and data or nil
-	end
-
-	local function writeJSON(path, tbl)
-		pcall(function()
-			ensureFolder()
-			if writefile then writefile(path, HttpService:JSONEncode(tbl)) end
-		end)
-	end
-
-	local function loadUsed()
-		local d = readJSON(USED_FILE)
-		return type(d) == "table" and d or {}
-	end
-
-	local function isUnlocked()
-		if sessionOK then return true end
-		local d = readJSON(AUTH_FILE)
-		if type(d) ~= "table" or d.ver ~= AUTH_VERSION then return false end
-		if d.uid ~= LP.UserId or d.unlocked ~= true then return false end
-		local k = tostring(d.key or ""):upper()
-		if k == "" or REVOKED[k] or not VALID_KEYS[k] then return false end
-		sessionOK = true
-		return true
-	end
-
-	local function markUnlocked(key)
-		sessionOK = true
-		writeJSON(AUTH_FILE, { ver = AUTH_VERSION, uid = LP.UserId, unlocked = true, key = key, time = os.time() })
-	end
-
-	local function tryRedeem(raw)
-		local key = tostring(raw or ""):gsub("%s+", ""):upper()
-		if key == "" then return false, "enter key" end
-		if REVOKED[key] then return false, "expired" end
-		if not VALID_KEYS[key] then return false, "invalid" end
-		local used = loadUsed()
-		if used[key] and used[key] ~= LP.UserId then return false, "already used" end
-		used[key] = LP.UserId
-		pcall(function() writeJSON(USED_FILE, used) end)
-		pcall(function() markUnlocked(key) end)
-		sessionOK = true
-		return true, "ok"
-	end
-
-	local function openDiscord()
-		pcall(function() if GuiService.OpenBrowserWindow then GuiService:OpenBrowserWindow(DISCORD_URL) end end)
-		pcall(function() if syn and syn.open_url then syn.open_url(DISCORD_URL) end end)
-		pcall(function() if open_url then open_url(DISCORD_URL) end end)
-		pcall(function() if setclipboard then setclipboard(DISCORD_URL) end end)
-	end
-
-	-- intro
-	do
-		local TweenService = game:GetService("TweenService")
-		local intro = Instance.new("ScreenGui")
-		intro.Name = "CuteGirlIntro"
-		intro.ResetOnSpawn = false
-		intro.IgnoreGuiInset = true
-		intro.DisplayOrder = 1000000
-		intro.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-		parentGui(intro)
-
-		local bg = Instance.new("Frame")
-		bg.Size = UDim2.fromScale(1, 1)
-		bg.BackgroundColor3 = Color3.fromRGB(5, 5, 7)
-		bg.BorderSizePixel = 0
-		bg.Parent = intro
-
-		-- thin top bar
-		local bar = Instance.new("Frame")
-		bar.AnchorPoint = Vector2.new(0.5, 0)
-		bar.Position = UDim2.new(0.5, 0, 0, 0)
-		bar.Size = UDim2.new(0, 0, 0, 2)
-		bar.BackgroundColor3 = Color3.fromRGB(255, 72, 110)
-		bar.BorderSizePixel = 0
-		bar.Parent = intro
-
-		local brand = Instance.new("TextLabel")
-		brand.AnchorPoint = Vector2.new(0.5, 0.5)
-		brand.Position = UDim2.fromScale(0.5, 0.47)
-		brand.Size = UDim2.fromOffset(480, 36)
-		brand.BackgroundTransparency = 1
-		brand.Font = Enum.Font.Code
-		brand.TextSize = 22
-		brand.TextColor3 = Color3.fromRGB(245, 245, 248)
-		brand.TextTransparency = 1
-		brand.Text = "cute girl"
-		brand.Parent = intro
-
-		local sub = Instance.new("TextLabel")
-		sub.AnchorPoint = Vector2.new(0.5, 0.5)
-		sub.Position = UDim2.fromScale(0.5, 0.52)
-		sub.Size = UDim2.fromOffset(280, 18)
-		sub.BackgroundTransparency = 1
-		sub.Font = Enum.Font.Code
-		sub.TextSize = 11
-		sub.TextColor3 = Color3.fromRGB(255, 72, 110)
-		sub.TextTransparency = 1
-		sub.Text = "premium  ·  loaded"
-		sub.Parent = intro
-
-		local line = Instance.new("Frame")
-		line.AnchorPoint = Vector2.new(0.5, 0.5)
-		line.Position = UDim2.fromScale(0.5, 0.555)
-		line.Size = UDim2.fromOffset(0, 1)
-		line.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
-		line.BorderSizePixel = 0
-		line.Parent = intro
-
-		local tag = Instance.new("TextLabel")
-		tag.AnchorPoint = Vector2.new(0.5, 1)
-		tag.Position = UDim2.new(0.5, 0, 1, -18)
-		tag.Size = UDim2.fromOffset(200, 14)
-		tag.BackgroundTransparency = 1
-		tag.Font = Enum.Font.Code
-		tag.TextSize = 10
-		tag.TextColor3 = Color3.fromRGB(70, 70, 80)
-		tag.TextTransparency = 1
-		tag.Text = "cg"
-		tag.Parent = intro
-
-		pcall(function()
-			TweenService:Create(bar, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-				Size = UDim2.new(1, 0, 0, 2),
-			}):Play()
-			task.wait(0.12)
-			TweenService:Create(brand, TweenInfo.new(0.28), { TextTransparency = 0 }):Play()
-			task.wait(0.08)
-			TweenService:Create(sub, TweenInfo.new(0.28), { TextTransparency = 0 }):Play()
-			TweenService:Create(line, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-				Size = UDim2.fromOffset(120, 1),
-			}):Play()
-			TweenService:Create(tag, TweenInfo.new(0.3), { TextTransparency = 0 }):Play()
-			task.wait(0.75)
-			TweenService:Create(brand, TweenInfo.new(0.22), { TextTransparency = 1 }):Play()
-			TweenService:Create(sub, TweenInfo.new(0.22), { TextTransparency = 1 }):Play()
-			TweenService:Create(line, TweenInfo.new(0.22), { BackgroundTransparency = 1 }):Play()
-			TweenService:Create(tag, TweenInfo.new(0.22), { TextTransparency = 1 }):Play()
-			TweenService:Create(bar, TweenInfo.new(0.25), { BackgroundTransparency = 1 }):Play()
-			TweenService:Create(bg, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
-			task.wait(0.32)
-		end)
-		pcall(function() intro:Destroy() end)
-	end
-
-	if not isUnlocked() then
-		sessionOK = false
-		local unlocked = false
-
-		local sg = Instance.new("ScreenGui")
-		sg.Name = "CuteGirlKeyGate"
-		sg.ResetOnSpawn = false
-		sg.IgnoreGuiInset = true
-		sg.DisplayOrder = 999999
-		parentGui(sg)
-
-		local dim = Instance.new("Frame")
-		dim.Size = UDim2.fromScale(1, 1)
-		dim.BackgroundColor3 = Color3.new(0, 0, 0)
-		dim.BackgroundTransparency = 0.5
-		dim.BorderSizePixel = 0
-		dim.Parent = sg
-
-		-- sharp panel (no corner radius)
-		local panel = Instance.new("Frame")
-		panel.AnchorPoint = Vector2.new(0.5, 0.5)
-		panel.Position = UDim2.fromScale(0.5, 0.5)
-		panel.Size = UDim2.fromOffset(300, 210)
-		panel.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
-		panel.BorderSizePixel = 0
-		panel.Parent = sg
-		local border = Instance.new("UIStroke")
-		border.Color = Color3.fromRGB(255, 70, 110)
-		border.Thickness = 1
-		border.Parent = panel
-
-		local header = Instance.new("Frame")
-		header.Size = UDim2.new(1, 0, 0, 28)
-		header.BackgroundColor3 = Color3.fromRGB(16, 16, 20)
-		header.BorderSizePixel = 0
-		header.Parent = panel
-
-		local title = Instance.new("TextLabel")
-		title.Size = UDim2.new(1, -12, 1, 0)
-		title.Position = UDim2.fromOffset(10, 0)
-		title.BackgroundTransparency = 1
-		title.Font = Enum.Font.Code
-		title.TextSize = 13
-		title.TextColor3 = Color3.fromRGB(255, 255, 255)
-		title.TextXAlignment = Enum.TextXAlignment.Left
-		title.Text = "cute girl  |  key"
-		title.Parent = header
-
-		local lab = Instance.new("TextLabel")
-		lab.Size = UDim2.new(1, -20, 0, 14)
-		lab.Position = UDim2.fromOffset(10, 38)
-		lab.BackgroundTransparency = 1
-		lab.Font = Enum.Font.Code
-		lab.TextSize = 11
-		lab.TextColor3 = Color3.fromRGB(140, 140, 150)
-		lab.TextXAlignment = Enum.TextXAlignment.Left
-		lab.Text = "license"
-		lab.Parent = panel
-
-		local box = Instance.new("TextBox")
-		box.Size = UDim2.new(1, -20, 0, 28)
-		box.Position = UDim2.fromOffset(10, 56)
-		box.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
-		box.BorderSizePixel = 0
-		box.Text = ""
-		box.PlaceholderText = "CG-...."
-		box.PlaceholderColor3 = Color3.fromRGB(70, 70, 80)
-		box.TextColor3 = Color3.fromRGB(230, 230, 240)
-		box.Font = Enum.Font.Code
-		box.TextSize = 12
-		box.ClearTextOnFocus = false
-		box.TextXAlignment = Enum.TextXAlignment.Left
-		box.Parent = panel
-		local boxStroke = Instance.new("UIStroke")
-		boxStroke.Color = Color3.fromRGB(45, 45, 55)
-		boxStroke.Thickness = 1
-		boxStroke.Parent = box
-
-		local unlockBtn = Instance.new("TextButton")
-		unlockBtn.Size = UDim2.new(1, -20, 0, 28)
-		unlockBtn.Position = UDim2.fromOffset(10, 94)
-		unlockBtn.BackgroundColor3 = Color3.fromRGB(255, 70, 110)
-		unlockBtn.BorderSizePixel = 0
-		unlockBtn.Font = Enum.Font.Code
-		unlockBtn.TextSize = 12
-		unlockBtn.TextColor3 = Color3.new(1, 1, 1)
-		unlockBtn.Text = "unlock"
-		unlockBtn.Parent = panel
-
-		local discBtn = Instance.new("TextButton")
-		discBtn.Size = UDim2.new(1, -20, 0, 26)
-		discBtn.Position = UDim2.fromOffset(10, 130)
-		discBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
-		discBtn.BorderSizePixel = 0
-		discBtn.Font = Enum.Font.Code
-		discBtn.TextSize = 11
-		discBtn.TextColor3 = Color3.fromRGB(180, 180, 200)
-		discBtn.Text = "discord"
-		discBtn.Parent = panel
-		local ds = Instance.new("UIStroke")
-		ds.Color = Color3.fromRGB(50, 50, 60)
-		ds.Thickness = 1
-		ds.Parent = discBtn
-
-		local status = Instance.new("TextLabel")
-		status.Size = UDim2.new(1, -20, 0, 14)
-		status.Position = UDim2.fromOffset(10, 168)
-		status.BackgroundTransparency = 1
-		status.Font = Enum.Font.Code
-		status.TextSize = 11
-		status.TextColor3 = Color3.fromRGB(120, 120, 130)
-		status.TextXAlignment = Enum.TextXAlignment.Left
-		status.Text = ""
-		status.Parent = panel
-
-		local function doUnlock()
-			local ok, msg = tryRedeem(box.Text)
-			status.Text = msg
-			if ok then
-				status.TextColor3 = Color3.fromRGB(100, 220, 140)
-				unlocked = true
-				task.delay(0.12, function() pcall(function() sg:Destroy() end) end)
-			else
-				status.TextColor3 = Color3.fromRGB(255, 80, 90)
-				boxStroke.Color = Color3.fromRGB(180, 50, 60)
-				task.delay(0.6, function() pcall(function() boxStroke.Color = Color3.fromRGB(45, 45, 55) end) end)
-			end
-		end
-
-		unlockBtn.MouseButton1Click:Connect(doUnlock)
-		box.FocusLost:Connect(function(e) if e then doUnlock() end end)
-		discBtn.MouseButton1Click:Connect(function()
-			openDiscord()
-			status.Text = "opening discord"
-			status.TextColor3 = Color3.fromRGB(140, 160, 255)
-		end)
-
-		local waited = 0
-		while not unlocked do
-			task.wait(0.2)
-			waited = waited + 0.2
-			if sessionOK then unlocked = true break end
-			if not sg.Parent then pcall(function() parentGui(sg) end) end
-			-- keep waiting for key (no auto-skip)
-		end
-		pcall(function() sg:Destroy() end)
-	end
-
-	if not isUnlocked() and not sessionOK then
-		error("[CuteGirl] Key required")
-	end
-end
+-- CuteGirl Hub Premium (key gate temporarily disabled for UI load)
 
 -- MAIN HUB
 -- ============================================================
@@ -880,21 +535,23 @@ end
 -- CREATE WINDOW & TABS
 -- ============================================================
 local Window
-local okWin, winErr = pcall(function()
-Window = Library:CreateWindow({
+local Window = Library:CreateWindow({
     Title = "Cute Girl Hub Premium",
     Footer = "premium",
-    Icon = 95816097006870,
-    NotifySide = "Right",
+    Center = true,
+    AutoShow = true,
+    Resizable = true,
     ShowCustomCursor = false,
     UnlockMouseWhileOpen = true,
+    NotifySide = "Right",
+    MenuFadeTime = 0,
 })
 _G.CuteGirlWindow = Window
 pcall(function()
-	-- ensure library points at this window for Toggle
-	if Library.Window == nil then
-		Library.Window = Window
-	end
+	if Library.Window == nil then Library.Window = Window end
+end)
+pcall(function()
+	if Library.Notify then Library:Notify("CuteGirl UI ready - RightShift toggle", 4) end
 end)
 
 -- disable white fade on toggle
@@ -6063,6 +5720,20 @@ task.defer(function()
 	pcall(function()
 		if Options and Options.SkyPreset and Options.SkyPreset.SetValues then
 			Options.SkyPreset:SetValues(_G.CuteGirlSkyNames)
+		end
+	end)
+end)
+
+-- UI force-show fallback
+task.defer(function()
+	pcall(function()
+		if Library and not Library.Unloaded then
+			if typeof(Library.Toggle) == "function" then
+				-- try open if closed
+			end
+			if Library.Notify then
+				Library:Notify("CuteGirl ready", 2)
+			end
 		end
 	end)
 end)
