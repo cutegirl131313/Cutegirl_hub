@@ -1656,7 +1656,7 @@ Tabs.Character:AddLeftGroupbox("Movement")
 	MoveBox:AddToggle("HeadTP", { Text = "Head TP (above)", Default = false, Callback = function(v) S.HeadTP = v; _G.HUB.HeadTP = v end })
 	MoveBox:AddDropdown("EmoteDrop", {
 		Text = "Emote (Kicia)",
-		Values = { "None", "Bodybuilder Posing", "Floss Dance", "Hyper Circle Scootin'", "Dolphin Dance", "Halloween Dance 2", "Standing Twerk", "Breakdancing", "Fish Air Swimming", "Gangnam Style", "Cat Girl Bounce", "Hype Dance", "Line Dance", "Floor Driving", "Cha Cha Dance", "Still Standing", "Ballet Spin", "Worm Dance", "Take the L", "Wave", "Laugh", "Point", "Default Dance", "T-Pose" },
+		Values = { "None", "Default Dance", "T-Pose", "Wave", "Laugh", "Point" },
 		Default = 1,
 		Callback = function(v)
 			S.EmoteName = v
@@ -5923,32 +5923,6 @@ _G.CuteGirlApplySky = function()
 	sky.Parent = Lighting
 end
 
-local KICIA_EMOTE_IDS = {
-	["Bodybuilder Posing"] = "rbxassetid://10713990381",
-	["Floss Dance"] = "rbxassetid://10714340543",
-	["Hyper Circle Scootin'"] = "rbxassetid://73171328255147",
-	["Dolphin Dance"] = "rbxassetid://10714068222",
-	["Halloween Dance 2"] = "rbxassetid://15963314052",
-	["Standing Twerk"] = "rbxassetid://126275747804327",
-	["Breakdancing"] = "rbxassetid://10214311282",
-	["Fish Air Swimming"] = "rbxassetid://112082806790047",
-	["Gangnam Style"] = "rbxassetid://129764254213842",
-	["Cat Girl Bounce"] = "rbxassetid://103606174140721",
-	["Hype Dance"] = "rbxassetid://10714369624",
-	["Line Dance"] = "rbxassetid://10714383856",
-	["Floor Driving"] = "rbxassetid://17360699557",
-	["Cha Cha Dance"] = "rbxassetid://10714386947",
-	["Still Standing"] = "rbxassetid://11444443576",
-	["Ballet Spin"] = "rbxassetid://10714293450",
-	["Worm Dance"] = "rbxassetid://112024753958948",
-	["Take the L"] = "rbxassetid://84744842499780",
-	["Wave"] = "rbxassetid://507770239",
-	["Laugh"] = "rbxassetid://507770818",
-	["Point"] = "rbxassetid://507770453",
-	["Default Dance"] = "rbxassetid://507777826",
-	["T-Pose"] = "rbxassetid://3333499508",
-}
-
 _G.CuteGirlPlayEmote = function(name)
 	if not name or name == "None" then return end
 	local LP = game:GetService("Players").LocalPlayer
@@ -5957,68 +5931,62 @@ _G.CuteGirlPlayEmote = function(name)
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if not hum then return end
 
-	-- stop previous
-	pcall(function()
-		for _, tr in ipairs(hum:GetPlayingAnimationTracks()) do
-			if tr.Name == "CuteGirlEmote" or (tr.Animation and tr.Animation.Name == "CuteGirlEmote") then
-				tr:Stop(0.1)
-			end
-		end
-	end)
-
-	-- EmoteController by name
-	pcall(function()
+	-- try EmoteController
+	local ok = pcall(function()
 		local ctrl = require(LP.PlayerScripts.Controllers.EmoteController)
-		if ctrl then
-			if ctrl.UseEmote then ctrl:UseEmote(name) return end
-			if ctrl.Play then ctrl:Play(name) return end
+		if ctrl and ctrl.Play then
+			ctrl:Play(name)
+			return
+		end
+		if ctrl and ctrl.UseEmote then
+			ctrl:UseEmote(name)
+			return
 		end
 	end)
+	if ok then return end
 
-	-- ReplicatedStorage emotes module
+	-- try replicated emotes folder
 	pcall(function()
 		local RS = game:GetService("ReplicatedStorage")
-		for _, folderName in ipairs({ "Emotes", "Dances", "Animations" }) do
-			local emotes = RS:FindFirstChild(folderName)
-			if not emotes then continue end
-			local mod = emotes:FindFirstChild(name)
-			if not mod then
-				for _, c in ipairs(emotes:GetDescendants()) do
-					if c.Name == name or string.find(string.lower(c.Name), string.lower(name), 1, true) then
-						mod = c
-						break
-					end
+		local emotes = RS:FindFirstChild("Emotes") or RS:FindFirstChild("Dances")
+		if not emotes then return end
+		local mod = emotes:FindFirstChild(name)
+		if not mod then
+			for _, c in ipairs(emotes:GetChildren()) do
+				if string.find(string.lower(c.Name), string.lower(name), 1, true) then
+					mod = c
+					break
 				end
 			end
-			if mod and mod:IsA("ModuleScript") then
-				local e = require(mod)
-				if type(e) == "table" and e.new then
-					local inst = e.new(hum)
-					if inst.PlayClient then task.spawn(inst.PlayClient, inst) end
-					if inst.PlayServer then task.spawn(inst.PlayServer, inst) end
-				end
-			elseif mod and mod:IsA("Animation") then
-				local track = hum:LoadAnimation(mod)
-				track.Name = "CuteGirlEmote"
-				track:Play()
+		end
+		if mod and mod:IsA("ModuleScript") then
+			local e = require(mod)
+			if type(e) == "table" and e.new then
+				local inst = e.new(hum)
+				if inst.PlayClient then task.spawn(inst.PlayClient, inst) end
+				if inst.PlayServer then task.spawn(inst.PlayServer, inst) end
+			elseif type(e) == "function" then
+				e(hum)
 			end
 		end
 	end)
 
-	-- Kicia animation id (Take the L, Dolphin Dance, etc.)
+	-- fallback: Animate tool-less pose via Humanoid description load
 	pcall(function()
-		local id = KICIA_EMOTE_IDS[name]
-		if not id then return end
 		local anim = Instance.new("Animation")
-		anim.Name = "CuteGirlEmote"
-		anim.AnimationId = id
+		-- wave-ish rbx asset
+		local ids = {
+			["Wave"] = "rbxassetid://507770239",
+			["Laugh"] = "rbxassetid://507770818",
+			["Point"] = "rbxassetid://507770453",
+			["Default Dance"] = "rbxassetid://507777826",
+			["T-Pose"] = "rbxassetid://3333499508",
+		}
+		anim.AnimationId = ids[name] or ids["Wave"]
 		local track = hum:LoadAnimation(anim)
-		track.Name = "CuteGirlEmote"
-		track.Looped = true
-		track:Play(0.1)
+		track:Play()
 	end)
 end
-
 
 -- refresh dropdown options if library supports SetValues later
 task.defer(function()
