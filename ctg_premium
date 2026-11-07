@@ -816,12 +816,20 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 
 -- Legit Groupbox
-LegitGroup:AddToggle('AimbotToggle', {
-    Text = 'Aimbot (Players & NPCs)',
-    Default = false,
+LegitGroup:AddDropdown('AimModeDropdown', {
+    Values = { 'Off', 'Aimbot', 'Silent', 'Aimbot + Silent' },
+    Default = 1,
+    Multi = false,
+    Text = 'Aim Mode',
     Callback = function(Value)
-        getgenv().AimbotEnabled = Value
-        FOVFrame.Visible = Value and (getgenv().FOVShowEnabled or false)
+        local aim = (Value == 'Aimbot' or Value == 'Aimbot + Silent')
+        local sil = (Value == 'Silent' or Value == 'Aimbot + Silent')
+        getgenv().AimbotEnabled = aim
+        silentAimEnabled = sil
+        FOVFrame.Visible = aim and (getgenv().FOVShowEnabled or false)
+        pcall(function()
+            SilentFOVFrame.Visible = sil and (silentAimShowEnabled or false)
+        end)
     end
 })
 
@@ -1063,16 +1071,18 @@ task.spawn(function()
     end
 end)
 
-VoidSpamGroup:AddToggle('OrbitEnable', {
-    Text = 'Orbit',
-    Default = false,
+VoidSpamGroup:AddDropdown('DisplaceModeDropdown', {
+    Values = { 'Off', 'Orbit', 'Void Spam' },
+    Default = 1,
+    Multi = false,
+    Text = 'Displace Mode',
     Callback = function(val)
-        getgenv().OrbitEnabled = val
-        if not val then
+        getgenv().OrbitEnabled = (val == 'Orbit')
+        getgenv().VoidSpamEnabled = (val == 'Void Spam')
+        if val ~= 'Orbit' then
             orbitAnchorPos = nil
             orbitAngle = 0
         end
-        if val then getgenv().VoidSpamEnabled = false end
     end
 })
 
@@ -1109,18 +1119,6 @@ VoidSpamGroup:AddSlider('OrbitDelaySlider', {
     end
 })
 
-VoidSpamGroup:AddToggle('VoidSpamEnable', {
-    Text = 'Void Spam',
-    Default = false,
-    Callback = function(val)
-        getgenv().VoidSpamEnabled = val
-        if val then
-            getgenv().OrbitEnabled = false
-            orbitAnchorPos = nil
-        end
-    end
-})
-
 VoidSpamGroup:AddSlider('VoidSpamAttackLimitSlider', {
     Text = 'Attack Limit (Max 2)',
     Default = 2,
@@ -1144,14 +1142,7 @@ VoidSpamGroup:AddSlider('VoidSpamSpeedSlider', {
 })
 
 -- Silent Aim Groupbox
-SilentAimGroup:AddToggle('SilentAimToggle', {
-    Text = 'Enable Silent',
-    Default = false,
-    Callback = function(Value)
-        silentAimEnabled = Value
-        SilentFOVFrame.Visible = Value and (silentAimShowEnabled or false)
-    end
-})
+-- silent enable: Aim Mode dropdown
 
 SilentAimGroup:AddToggle('SilentWallCheckToggle', {
     Text = 'Wall Check',
@@ -1768,40 +1759,32 @@ task.spawn(function()
     end
 end)
 
-WeaponGroup:AddToggle('RageBotToggle', {
-    Text = 'Rage Bot',
-    Default = false,
+WeaponGroup:AddDropdown('RageModeDropdown', {
+    Values = { 'Off', 'Rage', 'Knife', 'Rage + Knife' },
+    Default = 1,
+    Multi = false,
+    Text = 'Rage Mode',
     Callback = function(Value)
-        getgenv().MeleeRageBotEnabled = Value
-        getgenv().Config.Enabled = Value
-    end
-})
-
-WeaponGroup:AddToggle('NPCTargetToggle', {
-    Text = 'Target NPCs',
-    Default = false,
-    Callback = function(Value)
-        getgenv().RagebotNPCOnly = Value
-    end
-})
-
-WeaponGroup:AddToggle('FFAModeToggle', {
-    Text = 'Ignore Spawn Protect',
-    Default = false,
-    Callback = function(Value)
-        getgenv().RagebotFFA = Value
-    end
-})
-
-WeaponGroup:AddToggle('KnifeToggle', {
-    Text = 'Knife',
-    Default = false,
-    Callback = function(Value)
-        getgenv().KnifeEnabled = Value
-        if Value then
+        local rage = (Value == 'Rage' or Value == 'Rage + Knife')
+        local knife = (Value == 'Knife' or Value == 'Rage + Knife')
+        getgenv().MeleeRageBotEnabled = rage
+        getgenv().Config.Enabled = rage or knife
+        getgenv().KnifeEnabled = knife
+        if knife then
             getgenv().Config.WeaponSlot = "Melee"
             getgenv().Config.ForceEquip = true
         end
+    end
+})
+
+WeaponGroup:AddDropdown('RageTargetDropdown', {
+    Values = { 'Players', 'NPCs Only', 'Ignore Protect' },
+    Default = 1,
+    Multi = false,
+    Text = 'Rage Target',
+    Callback = function(Value)
+        getgenv().RagebotNPCOnly = (Value == 'NPCs Only')
+        getgenv().RagebotFFA = (Value == 'Ignore Protect')
     end
 })
 
@@ -3041,46 +3024,15 @@ SpooferGroup:AddToggle('DeviceSpooferMaster', {
     end
 })
 
-SpooferGroup:AddToggle('DeviceVR', {
-    Text = 'Device: VR',
-    Default = false,
+SpooferGroup:AddDropdown('DeviceModeDropdown', {
+    Values = { 'MouseKeyboard', 'Touch', 'Gamepad', 'VR' },
+    Default = 1,
+    Multi = false,
+    Text = 'Device Mode',
     Callback = function(Value)
-        if Value then
-            getgenv().SpoofedDeviceMode = normalizeDeviceMode("vr")
-            if getgenv().DeviceSpooferEnabled then fireDeviceSetControls() end
-        end
-    end
-})
-
-SpooferGroup:AddToggle('DeviceTouch', {
-    Text = 'Device: Touch',
-    Default = false,
-    Callback = function(Value)
-        if Value then
-            getgenv().SpoofedDeviceMode = normalizeDeviceMode("touch")
-            if getgenv().DeviceSpooferEnabled then fireDeviceSetControls() end
-        end
-    end
-})
-
-SpooferGroup:AddToggle('DeviceGamepad', {
-    Text = 'Device: Gamepad',
-    Default = false,
-    Callback = function(Value)
-        if Value then
-            getgenv().SpoofedDeviceMode = normalizeDeviceMode("gamepad")
-            if getgenv().DeviceSpooferEnabled then fireDeviceSetControls() end
-        end
-    end
-})
-
-SpooferGroup:AddToggle('DeviceMouseKeyboard', {
-    Text = 'Device: MouseKeyboard',
-    Default = true,
-    Callback = function(Value)
-        if Value then
-            getgenv().SpoofedDeviceMode = normalizeDeviceMode("mousekeyboard")
-            if getgenv().DeviceSpooferEnabled then fireDeviceSetControls() end
+        getgenv().SpoofedDeviceMode = normalizeDeviceMode(Value)
+        if getgenv().DeviceSpooferEnabled then
+            fireDeviceSetControls(getgenv().SpoofedDeviceMode)
         end
     end
 })
