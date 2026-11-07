@@ -545,7 +545,7 @@ pcall(function()
 	if Library.Window == nil then Library.Window = Window end
 end)
 pcall(function()
-	if Library.Notify then Library:Notify("CuteGirl UI ready - RightShift toggle", 4) end
+	if Library.Notify then Library:Notify("CuteGirl UI ready | RightShift / Toggle UI", 5) end
 end)
 
 -- disable white fade on toggle
@@ -553,219 +553,122 @@ pcall(function()
 	if Library.Animations then
 		Library.Animations.ToggleWindow = false
 	end
-	Library.ToggleKeybind = nil
 end)
 
--- ========== MENU TOGGLE (PC buttons / mobile no buttons, no zoom bug) ==========
+-- ========== MENU TOGGLE (simple / stable) ==========
+pcall(function()
+	if Library.Animations then
+		Library.Animations.ToggleWindow = false
+	end
+end)
+
+-- RightShift menu key (Linoria standard)
+pcall(function()
+	local Options = Library.Options
+	if Options and Options.MenuKeybind then
+		Library.ToggleKeybind = Options.MenuKeybind
+	end
+end)
+
+-- Floating Toggle button
 task.spawn(function()
+	task.wait(0.5)
 	local CoreGui = game:GetService("CoreGui")
 	local UIS = game:GetService("UserInputService")
-	local isMobile = (UIS.TouchEnabled and not UIS.KeyboardEnabled)
-		or (Library and Library.IsMobile == true)
+	local LP = game:GetService("Players").LocalPlayer
 
-	-- mobile: lock DPI once so library doesn't keep rescaling (zoom in/out feel)
-	pcall(function()
-		if isMobile and Library.SetDPIScale then
-			Library:SetDPIScale(100)
-		end
-		if Library.Animations then Library.Animations.ToggleWindow = false end
-		Library.ToggleKeybind = nil
-		Library.ShowCustomCursor = false
-	end)
-
-	local main = nil
-	for _ = 1, 60 do
-		main = (Library.Window and Library.Window.MainFrame)
-			or (_G.CuteGirlWindow and _G.CuteGirlWindow.MainFrame)
-		if main then break end
-		task.wait(0.1)
-	end
-	if not main then return end
-
-	local hubGui = main
-	while hubGui and not hubGui:IsA("ScreenGui") do
-		hubGui = hubGui.Parent
-	end
-
-	local colorBackup = {}
-	pcall(function()
-		for _, d in ipairs(main:GetDescendants()) do
-			if d:IsA("GuiObject") then
-				colorBackup[d] = {
-					bg = d.BackgroundColor3,
-					bt = d.BackgroundTransparency,
-				}
-			end
-		end
-	end)
-
-	local function restoreColors()
-		for obj, data in pairs(colorBackup) do
-			if obj and obj.Parent then
-				pcall(function()
-					obj.BackgroundColor3 = data.bg
-					obj.BackgroundTransparency = data.bt or 0
-				end)
-			end
-		end
-	end
-
-	local open = true
-	local savedFov = nil
-	pcall(function()
-		local cam = workspace.CurrentCamera
-		if cam then savedFov = cam.FieldOfView end
-	end)
-
-	local function freeMouseCamera()
-		-- PC only — on mobile this causes zoom / camera jitter
-		if isMobile then return end
+	local function parent(sg)
 		pcall(function()
-			UIS.MouseBehavior = Enum.MouseBehavior.Default
-			UIS.MouseIconEnabled = true
+			if gethui then sg.Parent = gethui() end
 		end)
+		if not sg.Parent then pcall(function() sg.Parent = CoreGui end) end
+		if not sg.Parent then
+			pcall(function() sg.Parent = LP:FindFirstChild("PlayerGui") end)
+		end
+	end
+
+	local sg = Instance.new("ScreenGui")
+	sg.Name = "CuteGirlMenuBtns"
+	sg.ResetOnSpawn = false
+	sg.IgnoreGuiInset = true
+	sg.DisplayOrder = 99999
+	sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	parent(sg)
+
+	local btn = Instance.new("TextButton")
+	btn.Name = "ToggleUI"
+	btn.Size = UDim2.fromOffset(90, 28)
+	btn.Position = UDim2.fromOffset(12, 120)
+	btn.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+	btn.BorderSizePixel = 0
+	btn.Font = Enum.Font.Code
+	btn.TextSize = 12
+	btn.TextColor3 = Color3.fromRGB(255, 90, 130)
+	btn.Text = "Toggle UI"
+	btn.Parent = sg
+	local st = Instance.new("UIStroke")
+	st.Color = Color3.fromRGB(0, 0, 0)
+	st.Thickness = 1
+	st.Parent = btn
+
+	local function doToggle()
 		pcall(function()
-			local cam = workspace.CurrentCamera
-			if cam and not (S and S.Freecam) then
-				if cam.CameraType == Enum.CameraType.Scriptable then
-					cam.CameraType = Enum.CameraType.Custom
-				end
-				if savedFov and cam.FieldOfView ~= savedFov then
-					-- don't fight game FOV every frame; only if wildly off
-					if math.abs(cam.FieldOfView - savedFov) > 25 then
-						cam.FieldOfView = savedFov
-					end
+			-- Linoria / Obsidian
+			if Library.Toggle then
+				Library:Toggle()
+				return
+			end
+			if Library.Unloaded then return end
+			-- fallback: toggle ScreenGui under library
+			for _, g in ipairs(CoreGui:GetChildren()) do
+				if g:IsA("ScreenGui") and (g.Name:find("Linoria") or g.Name:find("Obsidian") or g.Name:find("Cute")) then
+					g.Enabled = not g.Enabled
 				end
 			end
-		end)
-		pcall(function()
-			for _, d in ipairs(main:GetDescendants()) do
-				if d:IsA("TextButton") and d.Modal then
-					d.Modal = false
-				end
-			end
-		end)
-	end
-
-	local function setOpen(v)
-		open = v and true or false
-		pcall(function()
-			if Library.Animations then Library.Animations.ToggleWindow = false end
-			Library.ToggleKeybind = nil
-			Library.Toggled = open
-		end)
-		-- ONLY MainFrame — never disable ScreenGui (keeps Toggle UI button alive)
-		main.Visible = open
-		if open then restoreColors() end
-		if not isMobile then freeMouseCamera() end
-	end
-
-	pcall(function()
-		local function safe(_, value)
-			if typeof(value) == "boolean" then
-				setOpen(value)
-			else
-				setOpen(not open)
-			end
-		end
-		Library.Toggle = safe
-		if Library.Window then Library.Window.Toggle = safe end
-		if _G.CuteGirlWindow then _G.CuteGirlWindow.Toggle = safe end
-	end)
-
-	-- destroy any old floating buttons
-	pcall(function()
-		for _, parent in ipairs({ CoreGui, typeof(gethui) == "function" and gethui() or nil }) do
-			if parent then
-				local o = parent:FindFirstChild("CG_TOGGLE")
-				if o then o:Destroy() end
-			end
-		end
-	end)
-
-	-- PC only: Toggle UI / Lock buttons
-	if not isMobile then
-		local sg = Instance.new("ScreenGui")
-		sg.Name = "CG_TOGGLE"
-		sg.ResetOnSpawn = false
-		sg.IgnoreGuiInset = true
-		sg.DisplayOrder = 1000000
-		sg.Parent = CoreGui
-		-- stay on CoreGui only so menu hide never parents-over this
-
-		local function mk(txt, y)
-			local b = Instance.new("TextButton")
-			b.Size = UDim2.fromOffset(110, 34)
-			b.Position = UDim2.fromOffset(14, y)
-			b.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
-			b.TextColor3 = Color3.fromRGB(255, 255, 255)
-			b.Font = Enum.Font.GothamBold
-			b.TextSize = 14
-			b.Text = txt
-			b.BorderSizePixel = 0
-			b.Parent = sg
-			local s = Instance.new("UIStroke")
-			s.Thickness = 1.5
-			s.Color = Color3.fromRGB(0, 0, 0)
-			s.Parent = b
-			return b
-		end
-
-		local toggleBtn = mk("Toggle UI", 70)
-		local lockBtn = mk("Lock", 110)
-		local locked = false
-
-		toggleBtn.MouseButton1Click:Connect(function()
-			setOpen(not open)
-			toggleBtn.Text = open and "Toggle UI" or "Open UI"
-		end)
-		lockBtn.MouseButton1Click:Connect(function()
-			locked = not locked
-			lockBtn.Text = locked and "Unlock" or "Lock"
-		end)
-
-		local holding = false
-		UIS.InputBegan:Connect(function(input)
-			if input.KeyCode ~= Enum.KeyCode.RightShift then return end
-			if holding then return end
-			holding = true
-			pcall(function() Library.ToggleKeybind = nil end)
-			setOpen(not open)
-			toggleBtn.Text = open and "Toggle UI" or "Open UI"
-		end)
-		UIS.InputEnded:Connect(function(input)
-			if input.KeyCode == Enum.KeyCode.RightShift then
-				holding = false
-			end
-		end)
-
-		task.spawn(function()
-			while sg.Parent do
-				pcall(function()
-					Library.ToggleKeybind = nil
-					if Library.Animations then Library.Animations.ToggleWindow = false end
-					if open then
-						local bad = false
-						for _, d in ipairs(main:GetDescendants()) do
-							if d:IsA("Frame") then
-								local c = d.BackgroundColor3
-								if c.R > 0.9 and c.G > 0.9 and c.B > 0.9 and d.BackgroundTransparency < 0.3
-									and d.AbsoluteSize.X > 100 and d.AbsoluteSize.Y > 100 then
-									bad = true
-									break
-								end
-							end
+			if gethui then
+				for _, g in ipairs(gethui():GetChildren()) do
+					if g:IsA("ScreenGui") and g ~= sg then
+						if g:FindFirstChild("Main") or g:FindFirstChild("Window") then
+							g.Enabled = not g.Enabled
 						end
-						if bad then restoreColors() end
-					else
-						freeMouseCamera()
 					end
-				end)
-				task.wait(0.5)
+				end
 			end
 		end)
+	end
 
-		
+	btn.MouseButton1Click:Connect(doToggle)
+
+	-- RightShift also toggles
+	UIS.InputBegan:Connect(function(input, gp)
+		if gp then return end
+		if input.KeyCode == Enum.KeyCode.RightShift then
+			doToggle()
+		end
+	end)
+
+	-- drag
+	local dragging, start, base
+	btn.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			start = input.Position
+			base = btn.Position
+		end
+	end)
+	btn.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+	UIS.InputChanged:Connect(function(input)
+		if not dragging then return end
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			local d = input.Position - start
+			btn.Position = UDim2.fromOffset(base.X.Offset + d.X, base.Y.Offset + d.Y)
+		end
+	end)
+end)
 
 -- Jump Power + Third Person (real camera unlock)
 task.spawn(function()
@@ -1026,7 +929,6 @@ Library:OnUnload(function()
 		task.spawn(function()
 			while main and main.Parent do
 				pcall(function()
-					Library.ToggleKeybind = nil
 					if Library.Animations then Library.Animations.ToggleWindow = false end
 					-- never touch CameraType / FieldOfView / MouseBehavior on mobile
 				end)
@@ -1370,7 +1272,7 @@ end
 -- ============================================================
 -- SPOOFER TAB OPTIONS & SANITIZATION
 -- ============================================================
-local SpoofGroup = Tabs.Spoofer:AddLeftGroupbox("Spoof Options", "user")
+local SpoofGroup = Tabs.Spoofer:AddLeftGroupbox("Spoof Options")
 local Controls = {}
 
 local function UpdateConfig()
@@ -1656,7 +1558,7 @@ UpdateConfig()
 -- ============================================================
 -- ACTIONS GROUPBOX
 -- ============================================================
-local ActionGroup = Tabs.Spoofer:AddRightGroupbox("Actions", "play")
+local ActionGroup = Tabs.Spoofer:AddRightGroupbox("Actions")
 
 ActionGroup:AddButton({
     Text = "Reset to Defaults",
@@ -1729,18 +1631,18 @@ Controls.unlockSkinsToggle = ActionGroup:AddToggle("UnlockSkinsToggle", {
 -- ============================================================
 -- CONFIG TAB
 -- ============================================================
-SaveManager:BuildConfigSection(Tabs.Config)
+pcall(function() if SaveManager and Tabs.Config then SaveManager:BuildConfigSection(Tabs.Config) end end)
 pcall(function() if ThemeManager and Tabs["UI Settings"] then ThemeManager:ApplyToTab(Tabs["UI Settings"]) end end)
 
 -- ============================================================
 -- UI SETTINGS TAB
 -- ============================================================
-local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu", "wrench")
+local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu")
 MenuGroup:AddToggle("KeybindMenuOpen", {
-    Default = Library.KeybindFrame.Visible,
+    Default = false,
     Text = "Open Keybind Menu",
     Callback = function(value)
-        Library.KeybindFrame.Visible = value
+        pcall(function() if Library.KeybindFrame then Library.KeybindFrame.Visible = value end end)
     end,
 })
 MenuGroup:AddToggle("ShowCustomCursor", {
@@ -1841,7 +1743,6 @@ pcall(function()
 		pcall(function() Library.Options.MenuKeybind:SetValue("F8") end)
 		pcall(function() Library.Options.MenuKeybind.Value = "F8" end)
 	end
-	Library.ToggleKeybind = nil
 end)
     end)
 
