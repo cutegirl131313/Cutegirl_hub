@@ -1,3 +1,4 @@
+print("[CuteGirl] script start")
 -- CuteGirl Hub Premium (key gate temporarily disabled for UI load)
 
 -- MAIN HUB
@@ -546,6 +547,7 @@ pcall(function()
 end)
 pcall(function()
 	if Library.Notify then Library:Notify("CuteGirl UI ready | RightShift / Toggle UI", 5) end
+	print("[CuteGirl] UI OK")
 end)
 
 -- disable white fade on toggle
@@ -918,24 +920,6 @@ task.spawn(function()
 	LP.CharacterAdded:Connect(function()
 		jumpsLeft = 0
 	end)
-end)
-
-
-Library:OnUnload(function()
-			pcall(function() sg:Destroy() end)
-		end)
-	else
-		-- mobile: no floating buttons, no freeMouseCamera loop (fixes zoom pulse)
-		task.spawn(function()
-			while main and main.Parent do
-				pcall(function()
-					if Library.Animations then Library.Animations.ToggleWindow = false end
-					-- never touch CameraType / FieldOfView / MouseBehavior on mobile
-				end)
-				task.wait(1)
-			end
-		end)
-	end
 end)
 
 
