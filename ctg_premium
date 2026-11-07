@@ -71,11 +71,28 @@ local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))
 local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 
 local Window = Library:CreateWindow({
-    Title = 'CuteGirl Hub Premium',
+    Title = 'cute.win  |  premium',
     Center = true,
     AutoShow = true,
+    ShowCustomCursor = false,
 })
 print("[CuteGirl] UI OK")
+
+pcall(function()
+	Library.AccentColor = Color3.fromRGB(255, 95, 145)
+	Library.FontColor = Color3.fromRGB(235, 235, 245)
+	Library.MainColor = Color3.fromRGB(18, 16, 22)
+	Library.BackgroundColor = Color3.fromRGB(14, 12, 18)
+	Library.OutlineColor = Color3.fromRGB(40, 35, 48)
+	if Library.SetAccent then
+		Library:SetAccent(Color3.fromRGB(255, 95, 145))
+	end
+	-- force refresh if available
+	if typeof(Library.UpdateColorsUsingRegistry) == "function" then
+		Library:UpdateColorsUsingRegistry()
+	end
+end)
+
 
 -- 2. Integrate existing skin changer and logic
 local EnumLibrary = require(ReplicatedStorage.Modules:WaitForChild("EnumLibrary", 10))
@@ -600,34 +617,34 @@ ThemeManager:SetFolder('MobileScriptHub')
 SaveManager:SetFolder('MobileScriptHub/game')
 
 local Tabs = {
-    Legit = Window:AddTab('Legit'),
-    Rage = Window:AddTab('Ragebot'),
-    Visuals = Window:AddTab('Visuals'),
-    Move = Window:AddTab('Move'),
-    Teleport = Window:AddTab('Teleport'),
-    AntiAim = Window:AddTab('Anti-Aim'),
-    Skybox = Window:AddTab('Skybox'),
-    Spoofer = Window:AddTab('Device Spoofer'),
+    Legit = Window:AddTab('Combat'),
+    Rage = Window:AddTab('Rage'),
+    Visuals = Window:AddTab('Visual'),
+    Move = Window:AddTab('Player'),
+    Teleport = Window:AddTab('Utility'),
+    AntiAim = Window:AddTab('AA'),
+    Skybox = Window:AddTab('World'),
+    Spoofer = Window:AddTab('Spoof'),
     ['UI Settings'] = Window:AddTab('UI Settings'),
 }
 
-local LegitGroup = Tabs.Legit:AddLeftGroupbox('Combat & Aimbot')
-local SilentAimGroup = Tabs.Legit:AddRightGroupbox('Silent Aim')
+local LegitGroup = Tabs.Legit:AddLeftGroupbox('Assist')
+local SilentAimGroup = Tabs.Legit:AddRightGroupbox('Silent')
 
-local VoidSpamGroup = Tabs.Rage:AddLeftGroupbox('Void Spam & Orbit')
-local WeaponGroup = Tabs.Rage:AddRightGroupbox('Weapon & Rage Config')
+local VoidSpamGroup = Tabs.Rage:AddLeftGroupbox('Displacement')
+local WeaponGroup = Tabs.Rage:AddRightGroupbox('Rage Core')
 
-local VisualsGroup = Tabs.Visuals:AddLeftGroupbox('ESP & Map')
-local CustomVisGroup = Tabs.Visuals:AddRightGroupbox('Visual Customization')
-local MoveGroup = Tabs.Move:AddLeftGroupbox('Movement')
-local TeleportGroup = Tabs.Teleport:AddLeftGroupbox('Teleport Options')
-local AntiAimGroup = Tabs.AntiAim:AddLeftGroupbox('Anti-Aim')
-local SkyboxGroup = Tabs.Skybox:AddLeftGroupbox('Skybox Options')
+local VisualsGroup = Tabs.Visuals:AddLeftGroupbox('Players')
+local CustomVisGroup = Tabs.Visuals:AddRightGroupbox('Overlay')
+local MoveGroup = Tabs.Move:AddLeftGroupbox('Motion')
+local TeleportGroup = Tabs.Teleport:AddLeftGroupbox('Warp')
+local AntiAimGroup = Tabs.AntiAim:AddLeftGroupbox('Angles')
+local SkyboxGroup = Tabs.Skybox:AddLeftGroupbox('Atmosphere')
 
 local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
-local SpooferGroup = Tabs.Spoofer:AddLeftGroupbox('Device Spoofer')
+local SpooferGroup = Tabs.Spoofer:AddLeftGroupbox('Client Spoof')
 local SpooferInfoGroup = Tabs.Spoofer:AddRightGroupbox('Info')
-local HitSoundGroup = Tabs.Visuals:AddLeftGroupbox('Hit Sound')
+local HitSoundGroup = Tabs.Visuals:AddLeftGroupbox('Audio')
 
 -- FOV GUIs
 local FOV = 150
@@ -1047,7 +1064,7 @@ task.spawn(function()
 end)
 
 VoidSpamGroup:AddToggle('OrbitEnable', {
-    Text = 'Orbit (Circle Desync)',
+    Text = 'Orbit',
     Default = false,
     Callback = function(val)
         getgenv().OrbitEnabled = val
@@ -1093,7 +1110,7 @@ VoidSpamGroup:AddSlider('OrbitDelaySlider', {
 })
 
 VoidSpamGroup:AddToggle('VoidSpamEnable', {
-    Text = 'Void Spam (Attack Teleport)',
+    Text = 'Void Spam',
     Default = false,
     Callback = function(val)
         getgenv().VoidSpamEnabled = val
@@ -1128,7 +1145,7 @@ VoidSpamGroup:AddSlider('VoidSpamSpeedSlider', {
 
 -- Silent Aim Groupbox
 SilentAimGroup:AddToggle('SilentAimToggle', {
-    Text = 'Silent Aim Enabled',
+    Text = 'Enable Silent',
     Default = false,
     Callback = function(Value)
         silentAimEnabled = Value
@@ -1752,7 +1769,7 @@ task.spawn(function()
 end)
 
 WeaponGroup:AddToggle('RageBotToggle', {
-    Text = 'RageBot (Universal)',
+    Text = 'Rage Bot',
     Default = false,
     Callback = function(Value)
         getgenv().MeleeRageBotEnabled = Value
@@ -1761,7 +1778,7 @@ WeaponGroup:AddToggle('RageBotToggle', {
 })
 
 WeaponGroup:AddToggle('NPCTargetToggle', {
-    Text = 'NPC Only',
+    Text = 'Target NPCs',
     Default = false,
     Callback = function(Value)
         getgenv().RagebotNPCOnly = Value
@@ -1769,7 +1786,7 @@ WeaponGroup:AddToggle('NPCTargetToggle', {
 })
 
 WeaponGroup:AddToggle('FFAModeToggle', {
-    Text = 'FFA Mode (Skip Invincible)',
+    Text = 'Ignore Spawn Protect',
     Default = false,
     Callback = function(Value)
         getgenv().RagebotFFA = Value
@@ -2051,7 +2068,7 @@ VisualsGroup:AddToggle('MapTransparencyToggle', {
 })
 
 VisualsGroup:AddToggle('UnlockAllToggle', {
-    Text = 'Unlock All (Skin Changer)',
+    Text = 'Unlock Cosmetics',
     Default = false,
     Callback = function(Value)
         if not Value then return end
@@ -2431,7 +2448,7 @@ end
 
 -- Visual Customization
 CustomVisGroup:AddToggle('CustomCrosshairToggle', {
-    Text = 'Enable Custom Crosshair',
+    Text = 'Crosshair',
     Default = false,
     Callback = function(Value)
         getgenv().CustomCrosshairEnabled = Value
@@ -2816,7 +2833,7 @@ MoveGroup:AddSlider('WalkSpeedSlider', {
     end
 })
 MoveGroup:AddToggle('ThirdPersonToggle', {
-    Text = 'Third Person',
+    Text = 'Camera',
     Default = false,
     Callback = function(Value)
         getgenv().ThirdPersonEnabled = Value
@@ -3196,8 +3213,9 @@ end)
 print("[CuteGirl] all systems ready")
 
 
+
 -- ============================================================
--- CuteGirl patch: Kicia-style aim/weapon + CuteGirl ESP/Crosshair
+-- CuteGirl patch (dropdown UI + fixed aim/gun/esp/cross/tp)
 -- ============================================================
 local CG = getgenv().CuteGirlPatch or {}
 getgenv().CuteGirlPatch = CG
@@ -3213,71 +3231,104 @@ CG.KiciaTP = false
 CG.TP_Dist = 6
 CG.TP_X = 2.5
 CG.TP_Y = 1.5
+CG.AimMode = "Off"
+CG.GunMods = {}
+CG.VisMods = {}
+
+local function CG_applyAimMode(mode)
+	CG.AimMode = mode or "Off"
+	CG.KiciaSilent = (mode == "Silent" or mode == "Silent + Aimbot")
+	CG.KiciaAimbot = (mode == "Aimbot" or mode == "Silent + Aimbot")
+end
+
+local function CG_applyGunMods(values)
+	-- values can be table (multi) or string
+	local set = {}
+	if type(values) == "table" then
+		for k, v in pairs(values) do
+			if v == true then set[k] = true end
+			if type(k) == "number" and type(v) == "string" then set[v] = true end
+		end
+	elseif type(values) == "string" then
+		set[values] = true
+	end
+	CG.GunMods = set
+	CG.RapidFire = set["Rapid Fire"] == true
+	CG.NoSpread = set["No Spread"] == true
+	CG.NoRecoil = set["No Recoil"] == true
+	CG.AutoReload = set["Auto Reload"] == true
+end
+
+local function CG_applyVis(values)
+	local set = {}
+	if type(values) == "table" then
+		for k, v in pairs(values) do
+			if v == true then set[k] = true end
+			if type(k) == "number" and type(v) == "string" then set[v] = true end
+		end
+	elseif type(values) == "string" then
+		set[values] = true
+	end
+	CG.VisMods = set
+	CG.CuteESP = set["ESP"] == true
+	local cross = set["Crosshair"] == true
+	if cross ~= CG.CuteCross then
+		CG.CuteCross = cross
+		pcall(function() if getgenv().CG_SetupCross then getgenv().CG_SetupCross() end end)
+	else
+		CG.CuteCross = cross
+	end
+end
 
 pcall(function()
-	local g = nil
-	-- attach to Legit tab if possible
+	local g
 	if Tabs and Tabs.Legit then
-		g = Tabs.Legit:AddRightGroupbox("Kicia Aim / Gun")
+		g = Tabs.Legit:AddRightGroupbox("Precision")
 	elseif Tabs and Tabs.Rage then
-		g = Tabs.Rage:AddRightGroupbox("Kicia Aim / Gun")
+		g = Tabs.Rage:AddRightGroupbox("Precision")
 	end
 	if not g then return end
-	g:AddToggle("CG_KiciaSilent", {
-		Text = "Kicia Silent Aim",
-		Default = false,
-		Callback = function(v) CG.KiciaSilent = v end,
+
+	g:AddDropdown("CG_AimMode", {
+		Values = { "Off", "Silent", "Aimbot", "Silent + Aimbot" },
+		Default = 1,
+		Multi = false,
+		Text = "Aim Mode",
+		Callback = function(v)
+			CG_applyAimMode(v)
+		end,
 	})
-	g:AddToggle("CG_KiciaAimbot", {
-		Text = "Kicia Aimbot",
-		Default = false,
-		Callback = function(v) CG.KiciaAimbot = v end,
-	})
-	g:AddToggle("CG_RapidFire", {
-		Text = "Rapid Fire (Kicia)",
-		Default = false,
-		Callback = function(v) CG.RapidFire = v end,
-	})
-	g:AddToggle("CG_NoSpread", {
-		Text = "No Spread (Kicia)",
-		Default = false,
-		Callback = function(v) CG.NoSpread = v end,
-	})
-	g:AddToggle("CG_NoRecoil", {
-		Text = "No Recoil (Kicia)",
-		Default = false,
-		Callback = function(v) CG.NoRecoil = v end,
-	})
-	g:AddToggle("CG_AutoReload", {
-		Text = "Auto Reload (Kicia)",
-		Default = false,
-		Callback = function(v) CG.AutoReload = v end,
+
+	g:AddDropdown("CG_GunMods", {
+		Values = { "Rapid Fire", "No Spread", "No Recoil", "Auto Reload" },
+		Default = 0,
+		Multi = true,
+		Text = "Gun Mods",
+		Callback = function(v)
+			CG_applyGunMods(v)
+		end,
 	})
 end)
 
 pcall(function()
 	if not Tabs or not Tabs.Visuals then return end
-	local g = Tabs.Visuals:AddRightGroupbox("CuteGirl ESP / Cross")
-	g:AddToggle("CG_CuteESP", {
-		Text = "CuteGirl ESP",
-		Default = false,
-		Callback = function(v) CG.CuteESP = v end,
-	})
-	g:AddToggle("CG_CuteCross", {
-		Text = "CuteGirl Crosshair",
-		Default = false,
+	local g = Tabs.Visuals:AddRightGroupbox("ESP Cross")
+	g:AddDropdown("CG_VisMods", {
+		Values = { "ESP", "Crosshair" },
+		Default = 0,
+		Multi = true,
+		Text = "Visuals",
 		Callback = function(v)
-			CG.CuteCross = v
-			pcall(function() if getgenv().CG_SetupCross then getgenv().CG_SetupCross() end end)
+			CG_applyVis(v)
 		end,
 	})
 end)
 
 pcall(function()
 	if not Tabs or not Tabs.Move then return end
-	local g = Tabs.Move:AddRightGroupbox("Kicia Third Person")
+	local g = Tabs.Move:AddRightGroupbox("Camera")
 	g:AddToggle("CG_KiciaTP", {
-		Text = "Kicia Third Person",
+		Text = "Camera",
 		Default = false,
 		Callback = function(v)
 			CG.KiciaTP = v
@@ -3312,7 +3363,6 @@ pcall(function()
 	})
 end)
 
--- Modules
 local CG_Players = game:GetService("Players")
 local CG_LP = CG_Players.LocalPlayer
 local CG_RS = game:GetService("ReplicatedStorage")
@@ -3321,6 +3371,7 @@ local CG_UIS = game:GetService("UserInputService")
 local CG_Core = game:GetService("CoreGui")
 
 local CG_Fighter, CG_Enum, CG_Util, CG_UseItem, CG_SS
+local CG_hooked = false
 
 local function CG_refresh()
 	pcall(function()
@@ -3400,15 +3451,21 @@ local function CG_encode(from, to, head)
 	return nil
 end
 
+local function CG_oid()
+	CG_refresh()
+	local lf = CG_Fighter and (CG_Fighter.LocalFighter or (CG_Fighter.GetFighter and CG_Fighter:GetFighter(CG_LP)))
+	local item = lf and lf.EquippedItem
+	if not item then return nil, nil end
+	local oid
+	pcall(function() oid = item:Get("ObjectID") end)
+	return oid, item
+end
+
 local function CG_fire(head, mode)
 	if not head then return end
 	CG_refresh()
-	if not CG_UseItem or not CG_SS or not CG_Fighter then return end
-	local lf = CG_Fighter.LocalFighter or (CG_Fighter.GetFighter and CG_Fighter:GetFighter(CG_LP))
-	local item = lf and lf.EquippedItem
-	if not item then return end
-	local oid
-	pcall(function() oid = item:Get("ObjectID") end)
+	if not CG_UseItem or not CG_SS then return end
+	local oid = CG_oid()
 	if not oid then return end
 	local cam = workspace.CurrentCamera
 	local hp = head.Position
@@ -3418,11 +3475,11 @@ local function CG_fire(head, mode)
 	pcall(function() CG_UseItem:FireServer(oid, CG_SS, data, nil) end)
 end
 
--- Kicia silent: on mouse hold rewrite + multi fire
+-- Silent only when mode includes Silent AND mouse held
 local lastCGSilent = 0
 CG_Run.Heartbeat:Connect(function()
 	if not CG.KiciaSilent then return end
-	if tick() - lastCGSilent < 0.02 then return end
+	if tick() - lastCGSilent < 0.03 then return end
 	local shooting = false
 	pcall(function()
 		shooting = CG_UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
@@ -3434,23 +3491,23 @@ CG_Run.Heartbeat:Connect(function()
 	lastCGSilent = tick()
 	CG_fire(head, "camera")
 	CG_fire(head, "target")
-	CG_fire(head, "camera")
 end)
 
--- namecall silent rewrite (when silentAimEnabled or KiciaSilent)
+-- namecall rewrite once
 pcall(function()
-	if not hookmetamethod then return end
+	if CG_hooked or not hookmetamethod then return end
+	CG_hooked = true
 	CG_refresh()
 	local useItem = CG_RS.Remotes.Replication.Fighter.UseItem
+	local wrap = newcclosure or function(f) return f end
 	local old
-	local __nc = newcclosure or function(f) return f end
-	old = hookmetamethod(game, "__namecall", __nc(function(self, ...)
+	old = hookmetamethod(game, "__namecall", wrap(function(self, ...)
 		local method = getnamecallmethod()
 		local args = {...}
 		if method == "FireServer" and self == useItem then
-			if CG.KiciaSilent or (silentAimEnabled == true) then
+			if CG.KiciaSilent then
 				local head = CG_pickHead()
-				if head and args[3] and type(args[3]) == "table" then
+				if head and type(args[3]) == "table" then
 					local cam = workspace.CurrentCamera
 					local from = cam and cam.CFrame.Position or head.Position
 					local data = CG_encode(from, head.Position, head)
@@ -3463,46 +3520,42 @@ pcall(function()
 	end))
 end)
 
--- Kicia Aimbot sticky
+-- Aimbot only when mode includes Aimbot
 CG_Run.RenderStepped:Connect(function()
 	if not CG.KiciaAimbot then return end
 	local head = CG_pickHead()
 	if not head then return end
 	local cam = workspace.CurrentCamera
 	if not cam then return end
-	local goal = CFrame.lookAt(cam.CFrame.Position, head.Position)
-	cam.CFrame = cam.CFrame:Lerp(goal, 0.55)
+	cam.CFrame = cam.CFrame:Lerp(CFrame.lookAt(cam.CFrame.Position, head.Position), 0.5)
 end)
 
 -- Rapid fire
+local lastRapid = 0
 CG_Run.Heartbeat:Connect(function()
 	if not CG.RapidFire then return end
+	if tick() - lastRapid < 0.04 then return end
 	local shooting = false
 	pcall(function()
 		shooting = CG_UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
 	end)
 	if not shooting then return end
+	lastRapid = tick()
 	local head = CG_pickHead()
 	if head then
 		CG_fire(head, "camera")
-		CG_fire(head, "target")
 	end
 end)
 
--- No recoil / no spread / auto reload via item attributes
+-- No recoil / spread / auto reload
 CG_Run.Heartbeat:Connect(function()
 	if not (CG.NoRecoil or CG.NoSpread or CG.AutoReload) then return end
-	CG_refresh()
-	local lf = CG_Fighter and (CG_Fighter.LocalFighter or (CG_Fighter.GetFighter and CG_Fighter:GetFighter(CG_LP)))
-	local item = lf and lf.EquippedItem
+	local oid, item = CG_oid()
 	if not item then return end
 	pcall(function()
 		if CG.NoRecoil then
-			if item.Set then
-				pcall(function() item:Set("Recoil", 0) end)
-				pcall(function() item:Set("RecoilPattern", 0) end)
-				pcall(function() item:Set("CameraKick", 0) end)
-			end
+			pcall(function() item:Set("Recoil", 0) end)
+			pcall(function() item:Set("CameraKick", 0) end)
 			pcall(function() item.Recoil = 0 end)
 		end
 		if CG.NoSpread then
@@ -3511,31 +3564,24 @@ CG_Run.Heartbeat:Connect(function()
 			pcall(function() item.Spread = 0 end)
 		end
 		if CG.AutoReload then
-			local ammo, mag
+			local ammo
 			pcall(function() ammo = item:Get("Ammo") end)
-			pcall(function() mag = item:Get("MagazineSize") or item:Get("MagSize") end)
 			if ammo == 0 then
 				pcall(function()
-					if lf.Reload then lf:Reload() end
+					local lf = CG_Fighter and CG_Fighter.LocalFighter
+					if lf and lf.Reload then lf:Reload() end
 				end)
 				pcall(function()
-					local remote = CG_RS.Remotes.Replication.Fighter:FindFirstChild("Reload")
+					local r = CG_RS.Remotes.Replication.Fighter:FindFirstChild("Reload")
 						or CG_RS.Remotes.Replication.Fighter:FindFirstChild("StartReload")
-					if remote then remote:FireServer() end
+					if r then r:FireServer() end
 				end)
 			end
 		end
 	end)
-	-- also damp camera shake
-	if CG.NoRecoil then
-		pcall(function()
-			local cam = workspace.CurrentCamera
-			-- soft hold - don't fight aimbot hard
-		end)
-	end
 end)
 
--- Kicia Third Person with ray
+-- Third person
 CG_Run.RenderStepped:Connect(function()
 	if not CG.KiciaTP then return end
 	local char = CG_LP.Character
@@ -3565,7 +3611,7 @@ CG_Run.RenderStepped:Connect(function()
 	end
 end)
 
--- CuteGirl Crosshair
+-- Crosshair
 local crossSg
 getgenv().CG_SetupCross = function()
 	if crossSg then pcall(function() crossSg:Destroy() end) crossSg = nil end
@@ -3574,64 +3620,89 @@ getgenv().CG_SetupCross = function()
 	crossSg.Name = "CuteGirlCrosshair"
 	crossSg.IgnoreGuiInset = true
 	crossSg.ResetOnSpawn = false
+	crossSg.DisplayOrder = 99998
 	pcall(function()
 		if gethui then crossSg.Parent = gethui() else crossSg.Parent = CG_Core end
 	end)
-	local function arm(size, pos)
+
+	-- center rotator (all 4 arms rotate together)
+	local root = Instance.new("Frame")
+	root.Name = "CrossRoot"
+	root.BackgroundTransparency = 1
+	root.Size = UDim2.fromOffset(80, 80)
+	root.Position = UDim2.fromScale(0.5, 0.5)
+	root.AnchorPoint = Vector2.new(0.5, 0.5)
+	root.Parent = crossSg
+
+	local function makeArm()
 		local f = Instance.new("Frame")
 		f.BackgroundColor3 = Color3.fromRGB(255, 90, 140)
 		f.BorderSizePixel = 0
-		f.Size = size
-		f.Position = pos
 		f.AnchorPoint = Vector2.new(0.5, 0.5)
-		f.Parent = crossSg
+		f.Parent = root
 		local s = Instance.new("UIStroke")
 		s.Color = Color3.new(0, 0, 0)
-		s.Thickness = 1.2
+		s.Thickness = 1.15
 		s.Parent = f
 		return f
 	end
-	-- animated length
-	local arms = {
-		arm(UDim2.fromOffset(16, 2), UDim2.fromScale(0.5, 0.5) + UDim2.fromOffset(-14, 0)),
-		arm(UDim2.fromOffset(16, 2), UDim2.fromScale(0.5, 0.5) + UDim2.fromOffset(14, 0)),
-		arm(UDim2.fromOffset(2, 16), UDim2.fromScale(0.5, 0.5) + UDim2.fromOffset(0, -14)),
-		arm(UDim2.fromOffset(2, 16), UDim2.fromScale(0.5, 0.5) + UDim2.fromOffset(0, 14)),
-	}
+
+	-- L R U D
+	local left = makeArm()
+	local right = makeArm()
+	local up = makeArm()
+	local down = makeArm()
+
 	local lab = Instance.new("TextLabel")
-	lab.Size = UDim2.fromOffset(90, 14)
-	lab.Position = UDim2.fromScale(0.5, 0.5) + UDim2.fromOffset(0, 24)
+	lab.Size = UDim2.fromOffset(100, 16)
+	lab.Position = UDim2.fromScale(0.5, 0.5) + UDim2.fromOffset(0, 36)
 	lab.AnchorPoint = Vector2.new(0.5, 0)
 	lab.BackgroundTransparency = 1
 	lab.Text = "cute.win"
 	lab.Font = Enum.Font.Code
-	lab.TextSize = 12
-	lab.TextStrokeTransparency = 0.3
+	lab.TextSize = 13
+	lab.TextStrokeTransparency = 0.25
+	lab.TextStrokeColor3 = Color3.new(0, 0, 0)
 	lab.Parent = crossSg
+
+	local gap = 5 -- hole in center
 	task.spawn(function()
 		local t0 = 0
 		while crossSg and crossSg.Parent do
-			t0 = t0 + 0.05
-			local pulse = 12 + math.sin(t0 * 4) * 5
-			local hue = (t0 * 0.15) % 1
-			local col = Color3.fromHSV(hue, 0.9, 1)
-			for i, a in ipairs(arms) do
-				if a and a.Parent then
-					a.BackgroundColor3 = col
-					if i <= 2 then
-						a.Size = UDim2.fromOffset(pulse, 2)
-					else
-						a.Size = UDim2.fromOffset(2, pulse)
-					end
-				end
-			end
+			t0 = t0 + 0.04
+			-- length: grow all directions (up/down + left/right)
+			local len = 11 + (math.sin(t0 * 5) * 0.5 + 0.5) * 10 -- 11 ~ 21
+			local thick = 2
+			local col = Color3.fromHSV((t0 * 0.18) % 1, 1, 1)
+
+			-- left / right (horizontal)
+			left.Size = UDim2.fromOffset(len, thick)
+			left.Position = UDim2.new(0.5, -(gap + len * 0.5), 0.5, 0)
+			left.BackgroundColor3 = col
+
+			right.Size = UDim2.fromOffset(len, thick)
+			right.Position = UDim2.new(0.5, (gap + len * 0.5), 0.5, 0)
+			right.BackgroundColor3 = col
+
+			-- up / down (vertical)
+			up.Size = UDim2.fromOffset(thick, len)
+			up.Position = UDim2.new(0.5, 0, 0.5, -(gap + len * 0.5))
+			up.BackgroundColor3 = col
+
+			down.Size = UDim2.fromOffset(thick, len)
+			down.Position = UDim2.new(0.5, 0, 0.5, (gap + len * 0.5))
+			down.BackgroundColor3 = col
+
+			-- rotate whole cross
+			root.Rotation = (t0 * 55) % 360
+
 			lab.TextColor3 = col
 			task.wait(0.03)
 		end
 	end)
 end
 
--- CuteGirl ESP
+-- ESP
 local espFolder = Instance.new("Folder")
 espFolder.Name = "CuteGirlESP2"
 pcall(function()
@@ -3645,7 +3716,7 @@ CG_Run.RenderStepped:Connect(function()
 		end
 		return
 	end
-	if tick() - lastEsp < 0.1 then return end
+	if tick() - lastEsp < 0.12 then return end
 	lastEsp = tick()
 	for _, c in ipairs(espFolder:GetChildren()) do c:Destroy() end
 	local myHRP = CG_LP.Character and CG_LP.Character:FindFirstChild("HumanoidRootPart")
@@ -3706,4 +3777,4 @@ CG_Run.RenderStepped:Connect(function()
 	end
 end)
 
-print("[CuteGirl] Kicia aim + CuteGirl ESP/Cross patch loaded")
+print("[CuteGirl] patch ready (dropdown aim/gun/visuals)")
