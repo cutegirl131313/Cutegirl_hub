@@ -1,7 +1,6 @@
 print("[CuteGirl] script start")
--- ==========================================
--- CuteGirl Hub Premium
--- ==========================================
+-- CuteGirl Hub Premium (UI-first bootstrap)
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
@@ -11,94 +10,119 @@ local Lighting = game:GetService("Lighting")
 local Workspace = workspace
 local Camera = Workspace.CurrentCamera
 local Player = Players.LocalPlayer
-local playerScripts = Player.PlayerScripts
-local controllers = playerScripts.Controllers
-local PlayerGui = Player:WaitForChild("PlayerGui")
 
--- Remove duplicate GUIs
-for _, v in pairs(PlayerGui:GetChildren()) do
-    if v.Name == "LuminousPureHub" or v.Name == "CuteGirl💩FOV" or v.Name == "VoidSpamGui" or v.Name == "CuteGirlMeleeHub" or v.Name == "CuteGirlRageUI" or v.Name == "CuteGirlSilentFOV" or v.Name == "CuteGirlCustomUI" then
-        v:Destroy()
-    end
-end
+local playerScripts, controllers, PlayerGui
+pcall(function()
+	playerScripts = Player:WaitForChild("PlayerScripts", 5)
+end)
+pcall(function()
+	if playerScripts then
+		controllers = playerScripts:WaitForChild("Controllers", 5)
+	end
+end)
+pcall(function()
+	PlayerGui = Player:WaitForChild("PlayerGui", 5)
+end)
 
--- attack/health tracking
+pcall(function()
+	if not PlayerGui then return end
+	for _, v in pairs(PlayerGui:GetChildren()) do
+		if typeof(v.Name) == "string" and (string.find(v.Name, "CuteGirl") or string.find(v.Name, "FOV") or string.find(v.Name, "VoidSpam") or string.find(v.Name, "Luminous")) then
+			pcall(function() v:Destroy() end)
+		end
+	end
+end)
+
 local lastAttackTime = 0
 local playerHealths = {}
 
 local function trackPlayerHealth(plr)
-    if plr == Player then return end
-    local function onChar(char)
-        local hum = char:WaitForChild("Humanoid", 5)
-        if hum then
-            playerHealths[plr] = hum.Health
-            hum.HealthChanged:Connect(function(newHp)
-                local oldHp = playerHealths[plr] or newHp
-                local diff = oldHp - newHp
-                if diff > 0 and getgenv().HitLogEnabled and (tick() - lastAttackTime < 0.3) then
-                    addHitLog(plr.Name, math.floor(diff))
-                end
-                playerHealths[plr] = newHp
-            end)
-        end
-    end
-    plr.CharacterAdded:Connect(onChar)
-    if plr.Character then onChar(plr.Character) end
+	if plr == Player then return end
+	local function onChar(char)
+		local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 3)
+		if not hum then return end
+		playerHealths[plr] = hum.Health
+		hum.HealthChanged:Connect(function(newHp)
+			local oldHp = playerHealths[plr] or newHp
+			local diff = oldHp - newHp
+			if diff > 0 and getgenv().HitLogEnabled and (tick() - lastAttackTime < 0.3) then
+				pcall(function()
+					if addHitLog then addHitLog(plr.Name, math.floor(diff)) end
+				end)
+			end
+			playerHealths[plr] = newHp
+		end)
+	end
+	plr.CharacterAdded:Connect(onChar)
+	if plr.Character then task.spawn(onChar, plr.Character) end
 end
-
-for _, p in ipairs(Players:GetPlayers()) do trackPlayerHealth(p) end
-Players.PlayerAdded:Connect(trackPlayerHealth)
-
--- Spawn protection tracker
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function()
-        player:SetAttribute("SpawnTime", tick())
-    end)
+pcall(function()
+	for _, p in ipairs(Players:GetPlayers()) do trackPlayerHealth(p) end
+	Players.PlayerAdded:Connect(trackPlayerHealth)
 end)
-for _, player in ipairs(Players:GetPlayers()) do
-    player.CharacterAdded:Connect(function()
-        player:SetAttribute("SpawnTime", tick())
-    end)
-    if player.Character then
-        player:SetAttribute("SpawnTime", tick())
-    end
-end
 
--- 1. Load Linoria Library
+-- Load Linoria (must succeed for UI)
 local Library, ThemeManager, SaveManager
 local function __loadLib()
 	local repos = {
-		'https://raw.githubusercontent.com/mstudio45/LinoriaLib/main/',
-		'https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/',
+		"https://raw.githubusercontent.com/mstudio45/LinoriaLib/main/",
+		"https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/",
 	}
 	for _, repo in ipairs(repos) do
 		local ok, lib = pcall(function()
-			return loadstring(game:HttpGet(repo .. 'Library.lua'))()
+			return loadstring(game:HttpGet(repo .. "Library.lua"))()
 		end)
 		if ok and lib then
 			Library = lib
 			pcall(function()
-				ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
+				ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
 			end)
 			pcall(function()
-				SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
+				SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 			end)
 			return true
 		end
 	end
 	return false
 end
+
 if not __loadLib() then
-	warn("[CuteGirl] Linoria failed to load")
+	warn("[CuteGirl] Linoria load failed")
+	-- emergency UI so user sees something
+	local sg = Instance.new("ScreenGui")
+	sg.Name = "CuteGirlFallback"
+	sg.ResetOnSpawn = false
+	pcall(function()
+		if gethui then sg.Parent = gethui() else sg.Parent = game:GetService("CoreGui") end
+	end)
+	local f = Instance.new("TextLabel")
+	f.Size = UDim2.fromOffset(320, 40)
+	f.Position = UDim2.fromScale(0.5, 0.1)
+	f.AnchorPoint = Vector2.new(0.5, 0)
+	f.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
+	f.TextColor3 = Color3.fromRGB(255, 100, 140)
+	f.Font = Enum.Font.Code
+	f.TextSize = 16
+	f.Text = "CuteGirl: Linoria failed (HTTP blocked)"
+	f.Parent = sg
 	return
 end
 
+local Options = Library.Options
+local Toggles = Library.Toggles
+
 local Window = Library:CreateWindow({
-    Title = 'CuteGirl Hub Premium',
-    Center = true,
-    AutoShow = true,
+	Title = "CuteGirl Hub Premium",
+	Center = true,
+	AutoShow = true,
 })
+pcall(function()
+	if Library.Toggle then
+		-- ensure visible
+	end
+end)
 print("[CuteGirl] UI OK")
+
 
 pcall(function()
 	Library.AccentColor = Color3.fromRGB(255, 95, 145)
@@ -639,12 +663,18 @@ task.defer(function()
 end)
 
 -- 3. Linoria Library Tabs and Groupboxes setup
-if ThemeManager then ThemeManager:SetLibrary(Library) end
-if SaveManager then SaveManager:SetLibrary(Library) end
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({})
-ThemeManager:SetFolder('MobileScriptHub')
-SaveManager:SetFolder('MobileScriptHub/game')
+pcall(function()
+	if ThemeManager then ThemeManager:SetLibrary(Library) end
+	if SaveManager then
+		SaveManager:SetLibrary(Library)
+		pcall(function() SaveManager:IgnoreThemeSettings() end)
+		pcall(function() SaveManager:SetIgnoreIndexes({}) end)
+		pcall(function() SaveManager:SetFolder('CuteGirlHub') end)
+	end
+	if ThemeManager then
+		pcall(function() ThemeManager:SetFolder('CuteGirlHub') end)
+	end
+end)
 
 local Tabs = {
     Legit = Window:AddTab('Combat'),
@@ -848,7 +878,7 @@ end)
 -- Legit Groupbox
 LegitGroup:AddDropdown('AimModeDropdown', {
     Values = { 'Off', 'Aimbot', 'Silent', 'Aimbot + Silent' },
-    Default = 1,
+    Default = 'Off',
     Multi = false,
     Text = 'Aim Mode',
     Callback = function(Value)
@@ -1103,7 +1133,7 @@ end)
 
 VoidSpamGroup:AddDropdown('DisplaceModeDropdown', {
     Values = { 'Off', 'Orbit', 'Void Spam' },
-    Default = 1,
+    Default = 'Off',
     Multi = false,
     Text = 'Displace Mode',
     Callback = function(val)
@@ -1885,7 +1915,7 @@ end)
 
 WeaponGroup:AddDropdown('RageModeDropdown', {
     Values = { 'Off', 'Rage', 'Knife', 'Rage + Knife' },
-    Default = 1,
+    Default = 'Off',
     Multi = false,
     Text = 'Rage Mode',
     Callback = function(Value)
@@ -1903,7 +1933,7 @@ WeaponGroup:AddDropdown('RageModeDropdown', {
 
 WeaponGroup:AddDropdown('RageTargetDropdown', {
     Values = { 'Players', 'NPCs Only', 'Ignore Protect' },
-    Default = 1,
+    Default = 'Players',
     Multi = false,
     Text = 'Rage Target',
     Callback = function(Value)
@@ -3150,7 +3180,7 @@ SpooferGroup:AddToggle('DeviceSpooferMaster', {
 
 SpooferGroup:AddDropdown('DeviceModeDropdown', {
     Values = { 'MouseKeyboard', 'Touch', 'Gamepad', 'VR' },
-    Default = 1,
+    Default = 'MouseKeyboard',
     Multi = false,
     Text = 'Device Mode',
     Callback = function(Value)
@@ -3236,8 +3266,8 @@ Library:OnUnload(function()
     Library.Unloaded = true
 end)
 
-ThemeManager:ApplyToTab(Tabs['UI Settings'])
-SaveManager:BuildConfigSection(Tabs['UI Settings'])
+if ThemeManager then pcall(function() ThemeManager:ApplyToTab(Tabs['UI Settings']) end) end
+if SaveManager then pcall(function() SaveManager:BuildConfigSection(Tabs['UI Settings']) end) end
 
 -- Extra emotes (Kicia-style IDs)
 task.spawn(function()
@@ -3287,3 +3317,9 @@ RunService.RenderStepped:Connect(function()
 end)
 
 print("[CuteGirl] premium ready")
+pcall(function()
+	if Library and Library.Notify then
+		Library:Notify("CuteGirl UI ready - RightShift", 4)
+	end
+end)
+
