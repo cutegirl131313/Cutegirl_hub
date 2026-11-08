@@ -1,4 +1,4 @@
---[[ VK_CuteGirl | basic combat ]]
+--[[ VK_CuteGirl Premium | combat ]]
 
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
@@ -154,7 +154,7 @@ local brand = Instance.new("TextLabel")
 brand.Size = UDim2.new(1, -16, 1, 0)
 brand.Position = UDim2.fromOffset(12, 0)
 brand.BackgroundTransparency = 1
-brand.Text = "VK_CuteGirl [v1]"
+brand.Text = "VK_CuteGirl Premium"
 brand.Font = Enum.Font.GothamBold
 brand.TextSize = 13
 brand.TextColor3 = C.accent
@@ -238,7 +238,7 @@ local function applyUIVersion(ver)
 				b.Font = Enum.Font.Code
 				b.TextSize = 11
 			end
-			brand.Text = "VK_CUTEGIRL  [v1]"
+			brand.Text = "VK_CUTEGIRL  PREMIUM"
 			brand.Font = Enum.Font.Code
 			brand.TextColor3 = C.accent
 			if toggleBtn then toggleBtn.Text = "TOGGLE"; toggleBtn.Font = Enum.Font.Code; toggleBtn.TextColor3 = C.accent end
@@ -270,7 +270,7 @@ local function applyUIVersion(ver)
 				b.Font = Enum.Font.GothamMedium
 				b.TextSize = 12
 			end
-			brand.Text = "VK_CuteGirl  [v2]"
+			brand.Text = "VK_CuteGirl Premium"
 			brand.Font = Enum.Font.GothamBold
 			brand.TextColor3 = C.accent
 			if toggleBtn then toggleBtn.Text = "toggle ui"; toggleBtn.Font = Enum.Font.GothamMedium; toggleBtn.TextColor3 = C.accent end
@@ -696,7 +696,7 @@ do
 		pcall(function()
 			S.Fly = false; S.Noclip = false; S.SilentAim = false; S.Aimbot = false; S.ESP = false
 		end)
-		print("[VK_CuteGirl] ui unloaded")
+		print("[VK_CuteGirl Premium] ui unloaded")
 		pcall(function() if _G.VK_WM then _G.VK_WM:Destroy(); _G.VK_WM = nil end end)
 		pcall(function() if gui then gui:Destroy() end end)
 	end)
@@ -1138,7 +1138,7 @@ local function unloadUI()
 	pcall(function()
 		S.Fly = false; S.Noclip = false; S.SilentAim = false; S.Aimbot = false; S.ESP = false
 	end)
-	print("[VK_CuteGirl] ui unloaded")
+	print("[VK_CuteGirl Premium] ui unloaded")
 	pcall(function() if _G.VK_WM then _G.VK_WM:Destroy(); _G.VK_WM = nil end end)
 	pcall(function() if gui then gui:Destroy() end end)
 end
@@ -1367,7 +1367,7 @@ end
 local function pickSilentHead()
 	local fov = tonumber(S.AimFOV) or 300
 	local cam = Workspace.CurrentCamera
-	-- scoped: FOV만 확대 (벽 무시 안 함 — wall check 그대로)
+	-- scoped: expand FOV only (keep wall check)
 	pcall(function()
 		if cam and cam.FieldOfView and cam.FieldOfView <= 60 then
 			fov = math.max(fov * 2.5, 800)
@@ -1763,10 +1763,12 @@ RunService.Heartbeat:Connect(function()
 					my.CFrame = CFrame.lookAt(backPos, pos)
 					my.AssemblyLinearVelocity = Vector3.zero
 				end)
-				if tick() - lastRage >= 0.05 then
+				if tick() - lastRage >= 0.04 then
 					lastRage = tick()
-					pcall(function() fireAt(best, "target") end)
-					pcall(function() fireAt(best, "camera") end)
+					for _ = 1, 10 do
+						pcall(function() fireAt(best, "target") end)
+						pcall(function() fireAt(best, "camera") end)
+					end
 				end
 				RealCFrame = saved
 				RealVelocity = savedVel
@@ -1774,19 +1776,17 @@ RunService.Heartbeat:Connect(function()
 		end
 	end
 	if not S.RageBot then return end
-	if tick() - lastRage < 0.07 then return end
+	if tick() - lastRage < 0.04 then return end
 	if not rageTarget or not rageTarget.Parent then
 		rageTarget = pickRageHead()
 	end
 	if not rageTarget then return end
 	lastRage = tick()
-	pcall(function()
-		refreshMods()
-		fireAt(rageTarget, "target")
-	end)
-	pcall(function()
-		fireAt(rageTarget, "camera")
-	end)
+	pcall(function() refreshMods() end)
+	for _ = 1, 8 do
+		pcall(function() fireAt(rageTarget, "target") end)
+		pcall(function() fireAt(rageTarget, "camera") end)
+	end
 end)
 
 
@@ -2470,16 +2470,16 @@ pcall(function()
 	lab.TextSize = 11
 	lab.TextXAlignment = Enum.TextXAlignment.Left
 	lab.TextColor3 = Color3.fromRGB(235, 235, 240)
-	lab.Text = "VK_CuteGirl | FREE | 0 fps"
+	lab.Text = "VK_CuteGirl | PREMIUM | 0 fps"
 	lab.Parent = box
 	task.spawn(function()
 		while lab and lab.Parent do
 			local fps = 0
 			pcall(function() fps = workspace:GetRealPhysicsFPS() end)
-			lab.Text = string.format("VK_CuteGirl | FREE | %.0f fps", fps)
+			lab.Text = string.format("VK_CuteGirl | PREMIUM | %.0f fps", fps)
 			task.wait(0.4)
 		end
 	end)
 end)
 
-print("[VK_CuteGirl] features ready")
+print("[VK_CuteGirl Premium] features ready")
