@@ -1,6 +1,7 @@
 print("[CuteGirl] script start")
--- CuteGirl Hub Premium (UI-first bootstrap)
-
+-- ==========================================
+-- CuteGirl Hub Premium
+-- ==========================================
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
@@ -10,119 +11,72 @@ local Lighting = game:GetService("Lighting")
 local Workspace = workspace
 local Camera = Workspace.CurrentCamera
 local Player = Players.LocalPlayer
+local playerScripts = Player.PlayerScripts
+local controllers = playerScripts.Controllers
+local PlayerGui = Player:WaitForChild("PlayerGui")
 
-local playerScripts, controllers, PlayerGui
-pcall(function()
-	playerScripts = Player:WaitForChild("PlayerScripts", 5)
-end)
-pcall(function()
-	if playerScripts then
-		controllers = playerScripts:WaitForChild("Controllers", 5)
-	end
-end)
-pcall(function()
-	PlayerGui = Player:WaitForChild("PlayerGui", 5)
-end)
+-- Remove duplicate GUIs
+for _, v in pairs(PlayerGui:GetChildren()) do
+    if v.Name == "LuminousPureHub" or v.Name == "CuteGirl💩FOV" or v.Name == "VoidSpamGui" or v.Name == "CuteGirlMeleeHub" or v.Name == "CuteGirlRageUI" or v.Name == "CuteGirlSilentFOV" or v.Name == "CuteGirlCustomUI" then
+        v:Destroy()
+    end
+end
 
-pcall(function()
-	if not PlayerGui then return end
-	for _, v in pairs(PlayerGui:GetChildren()) do
-		if typeof(v.Name) == "string" and (string.find(v.Name, "CuteGirl") or string.find(v.Name, "FOV") or string.find(v.Name, "VoidSpam") or string.find(v.Name, "Luminous")) then
-			pcall(function() v:Destroy() end)
-		end
-	end
-end)
-
+-- attack/health tracking
 local lastAttackTime = 0
 local playerHealths = {}
 
 local function trackPlayerHealth(plr)
-	if plr == Player then return end
-	local function onChar(char)
-		local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 3)
-		if not hum then return end
-		playerHealths[plr] = hum.Health
-		hum.HealthChanged:Connect(function(newHp)
-			local oldHp = playerHealths[plr] or newHp
-			local diff = oldHp - newHp
-			if diff > 0 and getgenv().HitLogEnabled and (tick() - lastAttackTime < 0.3) then
-				pcall(function()
-					if addHitLog then addHitLog(plr.Name, math.floor(diff)) end
-				end)
-			end
-			playerHealths[plr] = newHp
-		end)
-	end
-	plr.CharacterAdded:Connect(onChar)
-	if plr.Character then task.spawn(onChar, plr.Character) end
+    if plr == Player then return end
+    local function onChar(char)
+        local hum = char:WaitForChild("Humanoid", 5)
+        if hum then
+            playerHealths[plr] = hum.Health
+            hum.HealthChanged:Connect(function(newHp)
+                local oldHp = playerHealths[plr] or newHp
+                local diff = oldHp - newHp
+                if diff > 0 and getgenv().HitLogEnabled and (tick() - lastAttackTime < 0.3) then
+                    addHitLog(plr.Name, math.floor(diff))
+                end
+                playerHealths[plr] = newHp
+            end)
+        end
+    end
+    plr.CharacterAdded:Connect(onChar)
+    if plr.Character then onChar(plr.Character) end
 end
-pcall(function()
-	for _, p in ipairs(Players:GetPlayers()) do trackPlayerHealth(p) end
-	Players.PlayerAdded:Connect(trackPlayerHealth)
+
+for _, p in ipairs(Players:GetPlayers()) do trackPlayerHealth(p) end
+Players.PlayerAdded:Connect(trackPlayerHealth)
+
+-- Spawn protection tracker
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        player:SetAttribute("SpawnTime", tick())
+    end)
 end)
-
--- Load Linoria (must succeed for UI)
-local Library, ThemeManager, SaveManager
-local function __loadLib()
-	local repos = {
-		"https://raw.githubusercontent.com/mstudio45/LinoriaLib/main/",
-		"https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/",
-	}
-	for _, repo in ipairs(repos) do
-		local ok, lib = pcall(function()
-			return loadstring(game:HttpGet(repo .. "Library.lua"))()
-		end)
-		if ok and lib then
-			Library = lib
-			pcall(function()
-				ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-			end)
-			pcall(function()
-				SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
-			end)
-			return true
-		end
-	end
-	return false
+for _, player in ipairs(Players:GetPlayers()) do
+    player.CharacterAdded:Connect(function()
+        player:SetAttribute("SpawnTime", tick())
+    end)
+    if player.Character then
+        player:SetAttribute("SpawnTime", tick())
+    end
 end
 
-if not __loadLib() then
-	warn("[CuteGirl] Linoria load failed")
-	-- emergency UI so user sees something
-	local sg = Instance.new("ScreenGui")
-	sg.Name = "CuteGirlFallback"
-	sg.ResetOnSpawn = false
-	pcall(function()
-		if gethui then sg.Parent = gethui() else sg.Parent = game:GetService("CoreGui") end
-	end)
-	local f = Instance.new("TextLabel")
-	f.Size = UDim2.fromOffset(320, 40)
-	f.Position = UDim2.fromScale(0.5, 0.1)
-	f.AnchorPoint = Vector2.new(0.5, 0)
-	f.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
-	f.TextColor3 = Color3.fromRGB(255, 100, 140)
-	f.Font = Enum.Font.Code
-	f.TextSize = 16
-	f.Text = "CuteGirl: Linoria failed (HTTP blocked)"
-	f.Parent = sg
-	return
-end
-
-local Options = Library.Options
-local Toggles = Library.Toggles
+-- 1. Load Linoria Library
+local repo = 'https://raw.githubusercontent.com/mstudio45/LinoriaLib/main/'
+local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
+local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
+local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 
 local Window = Library:CreateWindow({
-	Title = "CuteGirl Hub Premium",
-	Center = true,
-	AutoShow = true,
+    Title = 'cute.win  |  premium',
+    Center = true,
+    AutoShow = true,
+    ShowCustomCursor = false,
 })
-pcall(function()
-	if Library.Toggle then
-		-- ensure visible
-	end
-end)
 print("[CuteGirl] UI OK")
-
 
 pcall(function()
 	Library.AccentColor = Color3.fromRGB(255, 95, 145)
@@ -141,20 +95,12 @@ end)
 
 
 -- 2. Integrate existing skin changer and logic
-local EnumLibrary, CosmeticLibrary, ItemLibrary, DataController
-pcall(function()
-	EnumLibrary = require(ReplicatedStorage.Modules:WaitForChild("EnumLibrary", 10))
-	if EnumLibrary and EnumLibrary.WaitForEnumBuilder then EnumLibrary:WaitForEnumBuilder() end
-end)
-pcall(function()
-	CosmeticLibrary = require(ReplicatedStorage.Modules:WaitForChild("CosmeticLibrary", 10))
-end)
-pcall(function()
-	ItemLibrary = require(ReplicatedStorage.Modules:WaitForChild("ItemLibrary", 10))
-end)
-pcall(function()
-	DataController = require(controllers:WaitForChild("PlayerDataController", 10))
-end)
+local EnumLibrary = require(ReplicatedStorage.Modules:WaitForChild("EnumLibrary", 10))
+if EnumLibrary then EnumLibrary:WaitForEnumBuilder() end
+
+local CosmeticLibrary = require(ReplicatedStorage.Modules:WaitForChild("CosmeticLibrary", 10))
+local ItemLibrary = require(ReplicatedStorage.Modules:WaitForChild("ItemLibrary", 10))
+local DataController = require(controllers:WaitForChild("PlayerDataController", 10))
 
 local equipped, favorites = {}, {}
 local constructingWeapon, viewingProfile = nil, nil
@@ -663,18 +609,12 @@ task.defer(function()
 end)
 
 -- 3. Linoria Library Tabs and Groupboxes setup
-pcall(function()
-	if ThemeManager then ThemeManager:SetLibrary(Library) end
-	if SaveManager then
-		SaveManager:SetLibrary(Library)
-		pcall(function() SaveManager:IgnoreThemeSettings() end)
-		pcall(function() SaveManager:SetIgnoreIndexes({}) end)
-		pcall(function() SaveManager:SetFolder('CuteGirlHub') end)
-	end
-	if ThemeManager then
-		pcall(function() ThemeManager:SetFolder('CuteGirlHub') end)
-	end
-end)
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({})
+ThemeManager:SetFolder('MobileScriptHub')
+SaveManager:SetFolder('MobileScriptHub/game')
 
 local Tabs = {
     Legit = Window:AddTab('Combat'),
@@ -878,7 +818,7 @@ end)
 -- Legit Groupbox
 LegitGroup:AddDropdown('AimModeDropdown', {
     Values = { 'Off', 'Aimbot', 'Silent', 'Aimbot + Silent' },
-    Default = 'Off',
+    Default = 1,
     Multi = false,
     Text = 'Aim Mode',
     Callback = function(Value)
@@ -1133,7 +1073,7 @@ end)
 
 VoidSpamGroup:AddDropdown('DisplaceModeDropdown', {
     Values = { 'Off', 'Orbit', 'Void Spam' },
-    Default = 'Off',
+    Default = 1,
     Multi = false,
     Text = 'Displace Mode',
     Callback = function(val)
@@ -1625,13 +1565,12 @@ local function __isEnemy(player)
 end
 
 local function __isInvincible(player, pChar)
-    return false -- no immunity check
-    if not player or not pChar then return false end
-    if pChar:FindFirstChildOfClass("ForceField") then return false end
+    if not player or not pChar then return true end
+    if pChar:FindFirstChildOfClass("ForceField") then return true end
     local st = player:GetAttribute("SpawnTime")
-    if st and (tick() - st) < 1.5 then return false end
+    if st and (tick() - st) < 0.05 then return true end
     local ok, inv = pcall(function() return player:GetAttribute("Invincible") or player:GetAttribute("IsInvincible") end)
-    if ok and inv then return false end
+    if ok and inv then return true end
     local hum = pChar:FindFirstChildWhichIsA("Humanoid")
     if hum then
         local ok2, s = pcall(function() return hum:GetState() end)
@@ -1641,15 +1580,29 @@ local function __isInvincible(player, pChar)
 end
 
 local function isProtected(char)
-    return false -- no immunity
+    if not char then return true end
+    if char:FindFirstChild("InvincibilityParticles", true) then return true end
+    if not char:FindFirstChild("HumanoidRootPart") then return true end
+    if char:GetAttribute("SpawnProtection") or char:GetAttribute("Invincible") then return true end
+    return false
 end
 
 local function isEntityInvincible(targetPlayer)
-    return false -- no immunity
+    local ok1, fighter = pcall(function()
+        return __FighterController and __FighterController:GetFighter(targetPlayer)
+    end)
+    if not ok1 or not fighter then return false end
+    local entity = fighter.Entity
+    if not entity then return false end
+    local ok2, inv = pcall(function() return entity:Get('IsInvincible') end)
+    return ok2 and inv == true
 end
 
 local function isTargetInvincible(targetPlayer)
-    return false -- no immunity check
+    if not targetPlayer then return true end
+    if isProtected(targetPlayer.Character) then return true end
+    if isEntityInvincible(targetPlayer) then return true end
+    return false
 end
 
 local function __getClosestTarget()
@@ -1690,7 +1643,11 @@ local function __getClosestTarget()
             local pChar = player.Character
             if not pChar then continue end
             
-            -- immunity disabled
+            if getgenv().RagebotFFA then
+                if isTargetInvincible(player) then continue end
+            else
+                if __isInvincible(player, pChar) then continue end
+            end
             
             local pRoot = pChar:FindFirstChild("HumanoidRootPart")
             local pHead = pChar:FindFirstChild("Head")
@@ -1716,206 +1673,143 @@ getgenv().RagebotNPCOnly = getgenv().RagebotNPCOnly or false
 getgenv().RagebotFFA = getgenv().RagebotFFA or false
 getgenv().KnifeEnabled = getgenv().KnifeEnabled or false
 
-
-
--- ========== FIRE HELPERS + RAGE / KNIFE (VK Premium knife port) ==========
-
--- ========== Honyang Rage fire + Kicia/Honyang Knife (Always Backstab style) ==========
-local __rageLast, __knifeLast = 0, 0
-
-local function __cgFire(head, mode)
-	if not head or not head.Parent then return false end
-	if not __util or not __enum or not __repS then return false end
-	local lf = __FighterController and __FighterController.LocalFighter
-	if not lf then return false end
-	if not lf.EquippedItem then
-		pcall(function() lf:EquipItem(3) end)
-		return false
-	end
-	local oid
-	pcall(function() oid = lf.EquippedItem:Get("ObjectID") end)
-	pcall(function()
-		if not oid and lf.EquippedItem.Data then oid = lf.EquippedItem.Data.ObjectID end
-	end)
-	if not oid then return false end
-	local cam = workspace.CurrentCamera
-	local root = __lplr.Character and __lplr.Character:FindFirstChild("HumanoidRootPart")
-	local targetPos = head.Position
-	local from
-	if mode == "target" then
-		from = targetPos + Vector3.new(0, 0.12, 0)
-	elseif mode == "back" then
-		local model = head:FindFirstAncestorOfClass("Model") or head.Parent
-		local th = model and model:FindFirstChild("HumanoidRootPart")
-		from = th and (th.Position - th.CFrame.LookVector * 3.0 + Vector3.new(0, 0.3, 0)) or (targetPos + Vector3.new(0, 0.2, 0))
-	else
-		from = (cam and cam.CFrame.Position) or (root and root.Position) or targetPos
-	end
-	local ok, data = pcall(function()
-		local aimCF = CFrame.lookAt(from, targetPos)
-		local e = __util:EncodeCFrame(aimCF)
-		local hit = __util:EncodeCFrame(CFrame.new(0.43, 0.25, 0.42))
-		return {
-			[utf8.char(1)] = {
-				[utf8.char(0)] = e,
-				[utf8.char(1)] = e,
-				[utf8.char(2)] = head,
-				[utf8.char(3)] = hit,
-			}
-		}
-	end)
-	if not ok or not data then return false end
-	return pcall(function()
-		__repS.Remotes.Replication.Fighter.UseItem:FireServer(oid, __enum:ToEnum("StartShooting"), data, nil)
-	end)
-end
-
--- Honyang knife: force melee. Kicia AlwaysBackstab: attack only from behind with torso/head
-local function __knifeTick()
-	local lf = __FighterController and __FighterController.LocalFighter
-	if not lf then return end
-	pcall(function() lf:EquipItem(3) end) -- Honyang force melee
-
-	local my = __lplr.Character and __lplr.Character:FindFirstChild("HumanoidRootPart")
-	if not my then return end
-
-	local best, bestHrp, bestD = nil, nil, 1e9
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= __lplr then
-			local char = plr.Character
-			local hum = char and char:FindFirstChildOfClass("Humanoid")
-			local hrp = char and char:FindFirstChild("HumanoidRootPart")
-			if hum and hrp and hum.Health > 0 then
-				local a, b = __lplr:GetAttribute("TeamID"), plr:GetAttribute("TeamID")
-				if not (a and b and a == b) and not (__lplr.Team and plr.Team and __lplr.Team == plr.Team) then
-					local d = (my.Position - hrp.Position).Magnitude
-					if d < bestD and d < 5000 then
-						bestD = d
-						bestHrp = hrp
-						best = char:FindFirstChild("HitboxHead")
-							or char:FindFirstChild("Head")
-							or char:FindFirstChild("UpperTorso")
-							or char:FindFirstChild("Torso")
-							or hrp
-					end
-				end
-			end
-		end
-	end
-	if not best or not bestHrp then return end
-
-	-- strip protect (no immunity)
-	pcall(function()
-		local c = bestHrp.Parent
-		if not c then return end
-		c:SetAttribute("CanTakeDamage", true)
-		c:SetAttribute("Invincible", false)
-		c:SetAttribute("SpawnProtection", false)
-		for _, d in ipairs(c:GetDescendants()) do
-			if d:IsA("ForceField") then d:Destroy() end
-		end
-	end)
-
-	-- Always backstab position (Kicia AlwaysBackstab + Honyang desync)
-	local look = bestHrp.CFrame.LookVector
-	local pos = bestHrp.Position
-	local backPos = pos - look * 3.0 + Vector3.new(0, 0.25, 0)
-	local saved, savedVel = my.CFrame, my.AssemblyLinearVelocity
-	pcall(function()
-		my.CFrame = CFrame.lookAt(backPos, pos)
-		my.AssemblyLinearVelocity = Vector3.zero
-	end)
-	pcall(function()
-		__runS:BindToRenderStep("__knife_bs", Enum.RenderPriority.Camera.Value - 1, function()
-			if my then
-				my.CFrame = saved
-				my.AssemblyLinearVelocity = savedVel
-			end
-			pcall(function() __runS:UnbindFromRenderStep("__knife_bs") end)
-		end)
-	end)
-
-	if tick() - __knifeLast < 0.035 then return end
-	__knifeLast = tick()
-	lastAttackTime = tick()
-	-- Honyang multi UseItem style
-	for _ = 1, 12 do
-		__cgFire(best, "back")
-		__cgFire(best, "target")
-		__cgFire(best, "camera")
-	end
-end
-
 __runS.Heartbeat:Connect(function()
-	local rageOn = getgenv().MeleeRageBotEnabled == true
-	local knifeOn = getgenv().KnifeEnabled == true
-	if not rageOn and not knifeOn then return end
+    local rageOn = getgenv().MeleeRageBotEnabled == true
+    local knifeOn = getgenv().KnifeEnabled == true
+    if not rageOn and not knifeOn then return end
 
-	pcall(function() if __updateDeflection then __updateDeflection() end end)
+    __updateDeflection()
 
-	if knifeOn then
-		pcall(__knifeTick)
-	end
+    -- force melee when knife
+    if knifeOn then
+        pcall(function()
+            local lf = __FighterController and __FighterController.LocalFighter
+            if lf then lf:EquipItem(3) end
+        end)
+        getgenv().Config.WeaponSlot = "Melee"
+        getgenv().Config.ForceEquip = true
+    end
 
-	if not rageOn then return end
-	local targetPlayer, targetRoot, targetHead = __getClosestTarget()
-	if not targetHead or not targetRoot then return end
+    local targetPlayer, targetRoot, targetHead = __getClosestTarget()
+    if not targetHead or not targetRoot then return end
 
-	pcall(function()
-		local c = targetPlayer and targetPlayer.Character
-		if c then
-			c:SetAttribute("CanTakeDamage", true)
-			c:SetAttribute("Invincible", false)
-			c:SetAttribute("SpawnProtection", false)
-			if targetPlayer then targetPlayer:SetAttribute("SpawnTime", 0) end
-			for _, d in ipairs(c:GetDescendants()) do
-				if d:IsA("ForceField") then d:Destroy() end
-			end
-		end
-	end)
+    -- strip protect (0 sec cut)
+    pcall(function()
+        local c = targetPlayer and targetPlayer.Character or targetHead:FindFirstAncestorOfClass("Model")
+        if not c then return end
+        c:SetAttribute("CanTakeDamage", true)
+        c:SetAttribute("Invulnerable", false)
+        c:SetAttribute("SpawnProtection", false)
+        c:SetAttribute("SpawnProtect", false)
+        c:SetAttribute("IsImmune", false)
+        c:SetAttribute("Protected", false)
+        c:SetAttribute("Invincible", false)
+        if targetPlayer then
+            targetPlayer:SetAttribute("Invincible", false)
+            targetPlayer:SetAttribute("IsInvincible", false)
+            targetPlayer:SetAttribute("SpawnTime", 0)
+        end
+        for _, d in ipairs(c:GetDescendants()) do
+            if d:IsA("ForceField") then pcall(function() d:Destroy() end) end
+        end
+    end)
 
-	local myRoot = __lplr.Character and __lplr.Character:FindFirstChild("HumanoidRootPart")
-	local height = tonumber(getgenv().RageHeight) or 2
-	local above = targetHead.Position + Vector3.new(0, math.max(height, 1.2), 0)
-	if myRoot then
-		local saved, savedVel = myRoot.CFrame, myRoot.AssemblyLinearVelocity
-		myRoot.CFrame = CFrame.new(above, targetHead.Position)
-		myRoot.AssemblyLinearVelocity = Vector3.zero
-		pcall(function()
-			__runS:BindToRenderStep("__rage_r", Enum.RenderPriority.Camera.Value - 1, function()
-				if myRoot then
-					myRoot.CFrame = saved
-					myRoot.AssemblyLinearVelocity = savedVel
-				end
-				pcall(function() __runS:UnbindFromRenderStep("__rage_r") end)
-			end)
-		end)
-	end
-	if tick() - __rageLast >= 0.03 then
-		__rageLast = tick()
-		lastAttackTime = tick()
-		for _ = 1, 12 do
-			__cgFire(targetHead, "target")
-			__cgFire(targetHead, "camera")
-		end
-	end
+    -- desync position (behind/around head)
+    local radius = math.clamp(tonumber(getgenv().RageRadius) or 4, 1, 12)
+    local angleDeg = math.clamp(tonumber(getgenv().RageAngle) or 180, 1, 360)
+    local height = tonumber(getgenv().RageHeight) or 1
+    local rad = math.rad(angleDeg)
+    local offset = CFrame.new(math.sin(rad) * radius, height, math.cos(rad) * radius)
+    local desyncPos = (targetRoot.CFrame * offset).Position
+    -- knife: stick closer behind
+    if knifeOn and not rageOn then
+        desyncPos = (targetRoot.CFrame * CFrame.new(0, 0.5, 2.2)).Position
+    end
+    local desyncCF = CFrame.new(desyncPos, targetHead.Position)
+
+    local myRoot = __lplr.Character and __lplr.Character:FindFirstChild("HumanoidRootPart")
+    if myRoot then
+        local oldCF = myRoot.CFrame
+        local oldVel = myRoot.AssemblyLinearVelocity
+        myRoot.CFrame = desyncCF
+        myRoot.AssemblyLinearVelocity = Vector3.zero
+        __runS:BindToRenderStep("__restore", Enum.RenderPriority.Camera.Value - 1, function()
+            if myRoot then
+                myRoot.CFrame = oldCF
+                myRoot.AssemblyLinearVelocity = oldVel
+            end
+            pcall(function() __runS:UnbindFromRenderStep("__restore") end)
+        end)
+    end
+
+    if not __FighterController or not __FighterController.LocalFighter then return end
+    local item = __FighterController.LocalFighter.EquippedItem
+    if not item then
+        pcall(function()
+            __FighterController.LocalFighter:EquipItem(knifeOn and 3 or __getSlotNumber())
+        end)
+        return
+    end
+
+    local fireRate = tonumber(getgenv().Config.FireRate) or 0.02
+    if fireRate < 0.015 then fireRate = 0.015 end
+    if tick() - __lastFire < fireRate then return end
+    __lastFire = tick()
+
+    if not __util or not __enum then return end
+    local oid
+    pcall(function() oid = item:Get("ObjectID") end)
+    if not oid then return end
+
+    local multi = knifeOn and 10 or 16
+    local origins = {
+        desyncPos,
+        targetHead.Position + Vector3.new(0, 0.15, 0),
+        targetHead.Position + Vector3.new(0, 0.35, 0),
+        workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position or desyncPos,
+    }
+
+    lastAttackTime = tick()
+    for i = 1, multi do
+        local originPos = origins[((i - 1) % #origins) + 1]
+        local targetPos = targetHead.Position
+        local aimCF = CFrame.lookAt(originPos, targetPos)
+        local aimedPos = targetPos + Vector3.new((math.random() - 0.5) * 0.05, (math.random() - 0.5) * 0.05, (math.random() - 0.5) * 0.05)
+        local objSpaceHeadOffset = targetHead.CFrame:ToObjectSpace(CFrame.new(aimedPos))
+        local cameradata = {
+            [utf8.char(1)] = {
+                [utf8.char(0)] = __util:EncodeCFrame(aimCF),
+                [utf8.char(1)] = __util:EncodeCFrame(targetHead.CFrame),
+                [utf8.char(2)] = targetHead,
+                [utf8.char(3)] = __util:EncodeCFrame(objSpaceHeadOffset),
+            }
+        }
+        pcall(function()
+            __repS.Remotes.Replication.Fighter.UseItem:FireServer(oid, __enum:ToEnum("StartShooting"), cameradata, nil)
+        end)
+    end
 end)
 
+-- knife equip assist (backup)
 task.spawn(function()
-	while true do
-		task.wait(0.1)
-		if getgenv().KnifeEnabled then
-			pcall(function()
-				local lf = __FighterController and __FighterController.LocalFighter
-				if lf then lf:EquipItem(3) end
-			end)
-		end
-	end
+    while true do
+        task.wait(0.1)
+        if not getgenv().KnifeEnabled then
+            -- skip
+        else
+            pcall(function()
+                local localFighter = __FighterController and __FighterController.LocalFighter
+                if localFighter then
+                    localFighter:EquipItem(3)
+                end
+            end)
+        end
+    end
 end)
 
 WeaponGroup:AddDropdown('RageModeDropdown', {
     Values = { 'Off', 'Rage', 'Knife', 'Rage + Knife' },
-    Default = 'Off',
+    Default = 1,
     Multi = false,
     Text = 'Rage Mode',
     Callback = function(Value)
@@ -1933,7 +1827,7 @@ WeaponGroup:AddDropdown('RageModeDropdown', {
 
 WeaponGroup:AddDropdown('RageTargetDropdown', {
     Values = { 'Players', 'NPCs Only', 'Ignore Protect' },
-    Default = 'Players',
+    Default = 1,
     Multi = false,
     Text = 'Rage Target',
     Callback = function(Value)
@@ -1943,10 +1837,10 @@ WeaponGroup:AddDropdown('RageTargetDropdown', {
 })
 
 WeaponGroup:AddSlider('RageRadiusSlider', {
-    Text = 'Around Radius (1~5 Studs)',
-    Default = 3,
+    Text = 'Around Radius',
+    Default = 4,
     Min = 1,
-    Max = 5,
+    Max = 12,
     Rounding = 0,
     Callback = function(Value)
         getgenv().RageRadius = Value
@@ -3180,7 +3074,7 @@ SpooferGroup:AddToggle('DeviceSpooferMaster', {
 
 SpooferGroup:AddDropdown('DeviceModeDropdown', {
     Values = { 'MouseKeyboard', 'Touch', 'Gamepad', 'VR' },
-    Default = 'MouseKeyboard',
+    Default = 1,
     Multi = false,
     Text = 'Device Mode',
     Callback = function(Value)
@@ -3266,8 +3160,8 @@ Library:OnUnload(function()
     Library.Unloaded = true
 end)
 
-if ThemeManager then pcall(function() ThemeManager:ApplyToTab(Tabs['UI Settings']) end) end
-if SaveManager then pcall(function() SaveManager:BuildConfigSection(Tabs['UI Settings']) end) end
+ThemeManager:ApplyToTab(Tabs['UI Settings'])
+SaveManager:BuildConfigSection(Tabs['UI Settings'])
 
 -- Extra emotes (Kicia-style IDs)
 task.spawn(function()
@@ -3316,10 +3210,571 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("[CuteGirl] premium ready")
+print("[CuteGirl] all systems ready")
+
+
+
+-- ============================================================
+-- CuteGirl patch (dropdown UI + fixed aim/gun/esp/cross/tp)
+-- ============================================================
+local CG = getgenv().CuteGirlPatch or {}
+getgenv().CuteGirlPatch = CG
+CG.RapidFire = false
+CG.NoSpread = false
+CG.NoRecoil = false
+CG.AutoReload = false
+CG.KiciaSilent = false
+CG.KiciaAimbot = false
+CG.CuteESP = false
+CG.CuteCross = false
+CG.KiciaTP = false
+CG.TP_Dist = 6
+CG.TP_X = 2.5
+CG.TP_Y = 1.5
+CG.AimMode = "Off"
+CG.GunMods = {}
+CG.VisMods = {}
+
+local function CG_applyAimMode(mode)
+	CG.AimMode = mode or "Off"
+	CG.KiciaSilent = (mode == "Silent" or mode == "Silent + Aimbot")
+	CG.KiciaAimbot = (mode == "Aimbot" or mode == "Silent + Aimbot")
+end
+
+local function CG_applyGunMods(values)
+	-- values can be table (multi) or string
+	local set = {}
+	if type(values) == "table" then
+		for k, v in pairs(values) do
+			if v == true then set[k] = true end
+			if type(k) == "number" and type(v) == "string" then set[v] = true end
+		end
+	elseif type(values) == "string" then
+		set[values] = true
+	end
+	CG.GunMods = set
+	CG.RapidFire = set["Rapid Fire"] == true
+	CG.NoSpread = set["No Spread"] == true
+	CG.NoRecoil = set["No Recoil"] == true
+	CG.AutoReload = set["Auto Reload"] == true
+end
+
+local function CG_applyVis(values)
+	local set = {}
+	if type(values) == "table" then
+		for k, v in pairs(values) do
+			if v == true then set[k] = true end
+			if type(k) == "number" and type(v) == "string" then set[v] = true end
+		end
+	elseif type(values) == "string" then
+		set[values] = true
+	end
+	CG.VisMods = set
+	CG.CuteESP = set["ESP"] == true
+	local cross = set["Crosshair"] == true
+	if cross ~= CG.CuteCross then
+		CG.CuteCross = cross
+		pcall(function() if getgenv().CG_SetupCross then getgenv().CG_SetupCross() end end)
+	else
+		CG.CuteCross = cross
+	end
+end
+
 pcall(function()
-	if Library and Library.Notify then
-		Library:Notify("CuteGirl UI ready - RightShift", 4)
+	local g
+	if Tabs and Tabs.Legit then
+		g = Tabs.Legit:AddRightGroupbox("Precision")
+	elseif Tabs and Tabs.Rage then
+		g = Tabs.Rage:AddRightGroupbox("Precision")
+	end
+	if not g then return end
+
+	g:AddDropdown("CG_AimMode", {
+		Values = { "Off", "Silent", "Aimbot", "Silent + Aimbot" },
+		Default = 1,
+		Multi = false,
+		Text = "Aim Mode",
+		Callback = function(v)
+			CG_applyAimMode(v)
+		end,
+	})
+
+	g:AddDropdown("CG_GunMods", {
+		Values = { "Rapid Fire", "No Spread", "No Recoil", "Auto Reload" },
+		Default = 0,
+		Multi = true,
+		Text = "Gun Mods",
+		Callback = function(v)
+			CG_applyGunMods(v)
+		end,
+	})
+end)
+
+pcall(function()
+	if not Tabs or not Tabs.Visuals then return end
+	local g = Tabs.Visuals:AddRightGroupbox("ESP Cross")
+	g:AddDropdown("CG_VisMods", {
+		Values = { "ESP", "Crosshair" },
+		Default = 0,
+		Multi = true,
+		Text = "Visuals",
+		Callback = function(v)
+			CG_applyVis(v)
+		end,
+	})
+end)
+
+pcall(function()
+	if not Tabs or not Tabs.Move then return end
+	local g = Tabs.Move:AddRightGroupbox("Camera")
+	g:AddToggle("CG_KiciaTP", {
+		Text = "Camera",
+		Default = false,
+		Callback = function(v)
+			CG.KiciaTP = v
+			if not v then
+				pcall(function()
+					workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+					Player.CameraMode = Enum.CameraMode.LockFirstPerson
+				end)
+			else
+				pcall(function()
+					Player.CameraMode = Enum.CameraMode.Classic
+					Player.CameraMinZoomDistance = 0.5
+					Player.CameraMaxZoomDistance = 128
+				end)
+			end
+		end,
+	})
+	g:AddSlider("CG_TPDist", {
+		Text = "Distance",
+		Default = 6, Min = 2, Max = 20, Rounding = 1,
+		Callback = function(v) CG.TP_Dist = v end,
+	})
+	g:AddSlider("CG_TPX", {
+		Text = "X Offset",
+		Default = 2.5, Min = -10, Max = 10, Rounding = 1,
+		Callback = function(v) CG.TP_X = v end,
+	})
+	g:AddSlider("CG_TPY", {
+		Text = "Y Offset",
+		Default = 1.5, Min = -5, Max = 10, Rounding = 1,
+		Callback = function(v) CG.TP_Y = v end,
+	})
+end)
+
+local CG_Players = game:GetService("Players")
+local CG_LP = CG_Players.LocalPlayer
+local CG_RS = game:GetService("ReplicatedStorage")
+local CG_Run = game:GetService("RunService")
+local CG_UIS = game:GetService("UserInputService")
+local CG_Core = game:GetService("CoreGui")
+
+local CG_Fighter, CG_Enum, CG_Util, CG_UseItem, CG_SS
+local CG_hooked = false
+
+local function CG_refresh()
+	pcall(function()
+		if not CG_Fighter then
+			CG_Fighter = require(CG_LP.PlayerScripts.Controllers.FighterController)
+		end
+	end)
+	pcall(function()
+		if not CG_Enum then CG_Enum = require(CG_RS.Modules.EnumLibrary) end
+	end)
+	pcall(function()
+		if not CG_Util then CG_Util = require(CG_RS.Modules.Utility) end
+	end)
+	pcall(function()
+		if not CG_UseItem then
+			CG_UseItem = CG_RS.Remotes.Replication.Fighter.UseItem
+		end
+	end)
+	pcall(function()
+		if not CG_SS and CG_Enum then
+			CG_SS = CG_Enum:ToEnum("StartShooting")
+		end
+	end)
+end
+
+local function CG_sameTeam(plr)
+	local a, b = CG_LP:GetAttribute("TeamID"), plr:GetAttribute("TeamID")
+	if a and b and a == b then return true end
+	if CG_LP.Team and plr.Team and CG_LP.Team == plr.Team then return true end
+	return false
+end
+
+local function CG_pickHead()
+	local best, bestD = nil, 5000
+	local root = CG_LP.Character and CG_LP.Character:FindFirstChild("HumanoidRootPart")
+	local cam = workspace.CurrentCamera
+	local ref = (root and root.Position) or (cam and cam.CFrame.Position)
+	if not ref then return nil end
+	for _, plr in ipairs(CG_Players:GetPlayers()) do
+		if plr ~= CG_LP and plr.Character and not CG_sameTeam(plr) then
+			local char = plr.Character
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			local hrp = char:FindFirstChild("HumanoidRootPart")
+			if hum and hrp and hum.Health > 0 then
+				local d = (ref - hrp.Position).Magnitude
+				if d < bestD then
+					bestD = d
+					best = char:FindFirstChild("HitboxHead")
+						or char:FindFirstChild("HitboxHeadSmall")
+						or char:FindFirstChild("Head")
+						or hrp
+				end
+			end
+		end
+	end
+	return best
+end
+
+local function CG_encode(from, to, head)
+	if not head then return nil end
+	CG_refresh()
+	if CG_Util and CG_Util.EncodeCFrame then
+		local ok, data = pcall(function()
+			local e = CG_Util:EncodeCFrame(CFrame.new(from, to))
+			local hit = CG_Util:EncodeCFrame(CFrame.new(0.43, 0.25, 0.42))
+			return {
+				[utf8.char(1)] = {
+					[utf8.char(0)] = e,
+					[utf8.char(1)] = e,
+					[utf8.char(2)] = head,
+					[utf8.char(3)] = hit,
+				},
+			}
+		end)
+		if ok then return data end
+	end
+	return nil
+end
+
+local function CG_oid()
+	CG_refresh()
+	local lf = CG_Fighter and (CG_Fighter.LocalFighter or (CG_Fighter.GetFighter and CG_Fighter:GetFighter(CG_LP)))
+	local item = lf and lf.EquippedItem
+	if not item then return nil, nil end
+	local oid
+	pcall(function() oid = item:Get("ObjectID") end)
+	return oid, item
+end
+
+local function CG_fire(head, mode)
+	if not head then return end
+	CG_refresh()
+	if not CG_UseItem or not CG_SS then return end
+	local oid = CG_oid()
+	if not oid then return end
+	local cam = workspace.CurrentCamera
+	local hp = head.Position
+	local from = (mode == "target") and (hp + Vector3.new(0, 0.1, 0)) or ((cam and cam.CFrame.Position) or hp)
+	local data = CG_encode(from, hp, head)
+	if not data then return end
+	pcall(function() CG_UseItem:FireServer(oid, CG_SS, data, nil) end)
+end
+
+-- Silent only when mode includes Silent AND mouse held
+local lastCGSilent = 0
+CG_Run.Heartbeat:Connect(function()
+	if not CG.KiciaSilent then return end
+	if tick() - lastCGSilent < 0.03 then return end
+	local shooting = false
+	pcall(function()
+		shooting = CG_UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+			or CG_UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
+	end)
+	if not shooting then return end
+	local head = CG_pickHead()
+	if not head then return end
+	lastCGSilent = tick()
+	CG_fire(head, "camera")
+	CG_fire(head, "target")
+end)
+
+-- namecall rewrite once
+pcall(function()
+	if CG_hooked or not hookmetamethod then return end
+	CG_hooked = true
+	CG_refresh()
+	local useItem = CG_RS.Remotes.Replication.Fighter.UseItem
+	local wrap = newcclosure or function(f) return f end
+	local old
+	old = hookmetamethod(game, "__namecall", wrap(function(self, ...)
+		local method = getnamecallmethod()
+		local args = {...}
+		if method == "FireServer" and self == useItem then
+			if CG.KiciaSilent then
+				local head = CG_pickHead()
+				if head and type(args[3]) == "table" then
+					local cam = workspace.CurrentCamera
+					local from = cam and cam.CFrame.Position or head.Position
+					local data = CG_encode(from, head.Position, head)
+					if data then args[3] = data end
+					return old(self, unpack(args))
+				end
+			end
+		end
+		return old(self, ...)
+	end))
+end)
+
+-- Aimbot only when mode includes Aimbot
+CG_Run.RenderStepped:Connect(function()
+	if not CG.KiciaAimbot then return end
+	local head = CG_pickHead()
+	if not head then return end
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+	cam.CFrame = cam.CFrame:Lerp(CFrame.lookAt(cam.CFrame.Position, head.Position), 0.5)
+end)
+
+-- Rapid fire
+local lastRapid = 0
+CG_Run.Heartbeat:Connect(function()
+	if not CG.RapidFire then return end
+	if tick() - lastRapid < 0.04 then return end
+	local shooting = false
+	pcall(function()
+		shooting = CG_UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+	end)
+	if not shooting then return end
+	lastRapid = tick()
+	local head = CG_pickHead()
+	if head then
+		CG_fire(head, "camera")
 	end
 end)
 
+-- No recoil / spread / auto reload
+CG_Run.Heartbeat:Connect(function()
+	if not (CG.NoRecoil or CG.NoSpread or CG.AutoReload) then return end
+	local oid, item = CG_oid()
+	if not item then return end
+	pcall(function()
+		if CG.NoRecoil then
+			pcall(function() item:Set("Recoil", 0) end)
+			pcall(function() item:Set("CameraKick", 0) end)
+			pcall(function() item.Recoil = 0 end)
+		end
+		if CG.NoSpread then
+			pcall(function() item:Set("Spread", 0) end)
+			pcall(function() item:Set("MaxSpread", 0) end)
+			pcall(function() item.Spread = 0 end)
+		end
+		if CG.AutoReload then
+			local ammo
+			pcall(function() ammo = item:Get("Ammo") end)
+			if ammo == 0 then
+				pcall(function()
+					local lf = CG_Fighter and CG_Fighter.LocalFighter
+					if lf and lf.Reload then lf:Reload() end
+				end)
+				pcall(function()
+					local r = CG_RS.Remotes.Replication.Fighter:FindFirstChild("Reload")
+						or CG_RS.Remotes.Replication.Fighter:FindFirstChild("StartReload")
+					if r then r:FireServer() end
+				end)
+			end
+		end
+	end)
+end)
+
+-- Third person
+CG_Run.RenderStepped:Connect(function()
+	if not CG.KiciaTP then return end
+	local char = CG_LP.Character
+	if not char then return end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	local cam = workspace.CurrentCamera
+	if not hrp or not cam then return end
+	local off = Vector3.new(CG.TP_X or 2.5, CG.TP_Y or 1.5, CG.TP_Dist or 6)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { char }
+	local worldDir = hrp.CFrame:VectorToWorldSpace(off)
+	local hit = workspace:Raycast(hrp.Position, worldDir, params)
+	if hit then
+		local localHit = hrp.CFrame:VectorToObjectSpace(hit.Position - hrp.Position)
+		if localHit.Magnitude > 0.4 then
+			off = localHit.Unit * (localHit.Magnitude - 0.35)
+		end
+	end
+	local world = hrp.CFrame:PointToWorldSpace(off)
+	cam.CameraType = Enum.CameraType.Scriptable
+	cam.CFrame = CFrame.lookAt(world, hrp.Position + Vector3.new(0, 1.5, 0))
+	for _, p in ipairs(char:GetDescendants()) do
+		if p:IsA("BasePart") then
+			p.LocalTransparencyModifier = 0
+		end
+	end
+end)
+
+-- Crosshair
+local crossSg
+getgenv().CG_SetupCross = function()
+	if crossSg then pcall(function() crossSg:Destroy() end) crossSg = nil end
+	if not CG.CuteCross then return end
+	crossSg = Instance.new("ScreenGui")
+	crossSg.Name = "CuteGirlCrosshair"
+	crossSg.IgnoreGuiInset = true
+	crossSg.ResetOnSpawn = false
+	crossSg.DisplayOrder = 99998
+	pcall(function()
+		if gethui then crossSg.Parent = gethui() else crossSg.Parent = CG_Core end
+	end)
+
+	-- center rotator (all 4 arms rotate together)
+	local root = Instance.new("Frame")
+	root.Name = "CrossRoot"
+	root.BackgroundTransparency = 1
+	root.Size = UDim2.fromOffset(80, 80)
+	root.Position = UDim2.fromScale(0.5, 0.5)
+	root.AnchorPoint = Vector2.new(0.5, 0.5)
+	root.Parent = crossSg
+
+	local function makeArm()
+		local f = Instance.new("Frame")
+		f.BackgroundColor3 = Color3.fromRGB(255, 90, 140)
+		f.BorderSizePixel = 0
+		f.AnchorPoint = Vector2.new(0.5, 0.5)
+		f.Parent = root
+		local s = Instance.new("UIStroke")
+		s.Color = Color3.new(0, 0, 0)
+		s.Thickness = 1.15
+		s.Parent = f
+		return f
+	end
+
+	-- L R U D
+	local left = makeArm()
+	local right = makeArm()
+	local up = makeArm()
+	local down = makeArm()
+
+	local lab = Instance.new("TextLabel")
+	lab.Size = UDim2.fromOffset(100, 16)
+	lab.Position = UDim2.fromScale(0.5, 0.5) + UDim2.fromOffset(0, 36)
+	lab.AnchorPoint = Vector2.new(0.5, 0)
+	lab.BackgroundTransparency = 1
+	lab.Text = "cute.win"
+	lab.Font = Enum.Font.Code
+	lab.TextSize = 13
+	lab.TextStrokeTransparency = 0.25
+	lab.TextStrokeColor3 = Color3.new(0, 0, 0)
+	lab.Parent = crossSg
+
+	local gap = 5 -- hole in center
+	task.spawn(function()
+		local t0 = 0
+		while crossSg and crossSg.Parent do
+			t0 = t0 + 0.04
+			-- length: grow all directions (up/down + left/right)
+			local len = 11 + (math.sin(t0 * 5) * 0.5 + 0.5) * 10 -- 11 ~ 21
+			local thick = 2
+			local col = Color3.fromHSV((t0 * 0.18) % 1, 1, 1)
+
+			-- left / right (horizontal)
+			left.Size = UDim2.fromOffset(len, thick)
+			left.Position = UDim2.new(0.5, -(gap + len * 0.5), 0.5, 0)
+			left.BackgroundColor3 = col
+
+			right.Size = UDim2.fromOffset(len, thick)
+			right.Position = UDim2.new(0.5, (gap + len * 0.5), 0.5, 0)
+			right.BackgroundColor3 = col
+
+			-- up / down (vertical)
+			up.Size = UDim2.fromOffset(thick, len)
+			up.Position = UDim2.new(0.5, 0, 0.5, -(gap + len * 0.5))
+			up.BackgroundColor3 = col
+
+			down.Size = UDim2.fromOffset(thick, len)
+			down.Position = UDim2.new(0.5, 0, 0.5, (gap + len * 0.5))
+			down.BackgroundColor3 = col
+
+			-- rotate whole cross
+			root.Rotation = (t0 * 55) % 360
+
+			lab.TextColor3 = col
+			task.wait(0.03)
+		end
+	end)
+end
+
+-- ESP
+local espFolder = Instance.new("Folder")
+espFolder.Name = "CuteGirlESP2"
+pcall(function()
+	if gethui then espFolder.Parent = gethui() else espFolder.Parent = CG_Core end
+end)
+local lastEsp = 0
+CG_Run.RenderStepped:Connect(function()
+	if not CG.CuteESP then
+		if #espFolder:GetChildren() > 0 then
+			for _, c in ipairs(espFolder:GetChildren()) do c:Destroy() end
+		end
+		return
+	end
+	if tick() - lastEsp < 0.12 then return end
+	lastEsp = tick()
+	for _, c in ipairs(espFolder:GetChildren()) do c:Destroy() end
+	local myHRP = CG_LP.Character and CG_LP.Character:FindFirstChild("HumanoidRootPart")
+	for _, plr in ipairs(CG_Players:GetPlayers()) do
+		if plr ~= CG_LP and plr.Character and not CG_sameTeam(plr) then
+			local char = plr.Character
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			local hrp = char:FindFirstChild("HumanoidRootPart")
+			local head = char:FindFirstChild("Head")
+			if hum and hrp and hum.Health > 0 then
+				local hl = Instance.new("Highlight")
+				hl.Adornee = char
+				hl.FillTransparency = 0.88
+				hl.OutlineTransparency = 0.1
+				hl.FillColor = Color3.fromRGB(255, 70, 120)
+				hl.OutlineColor = Color3.fromRGB(0, 0, 0)
+				hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+				hl.Parent = espFolder
+
+				local bb = Instance.new("BillboardGui")
+				bb.Adornee = head or hrp
+				bb.Size = UDim2.fromOffset(130, 18)
+				bb.StudsOffset = Vector3.new(0, 2.4, 0)
+				bb.AlwaysOnTop = true
+				bb.Parent = espFolder
+				local lab = Instance.new("TextLabel")
+				lab.Size = UDim2.fromScale(1, 1)
+				lab.BackgroundTransparency = 1
+				local dist = myHRP and math.floor((myHRP.Position - hrp.Position).Magnitude) or 0
+				lab.Text = string.format("%s [%d]", plr.Name, dist)
+				lab.TextColor3 = Color3.fromRGB(255, 255, 255)
+				lab.TextStrokeTransparency = 0.2
+				lab.Font = Enum.Font.Code
+				lab.TextSize = 12
+				lab.Parent = bb
+
+				local hb = Instance.new("BillboardGui")
+				hb.Adornee = hrp
+				hb.Size = UDim2.fromOffset(4, 44)
+				hb.StudsOffset = Vector3.new(-2.4, 0, 0)
+				hb.AlwaysOnTop = true
+				hb.Parent = espFolder
+				local bg = Instance.new("Frame")
+				bg.Size = UDim2.fromScale(1, 1)
+				bg.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+				bg.BorderSizePixel = 0
+				bg.Parent = hb
+				local bar = Instance.new("Frame")
+				bar.AnchorPoint = Vector2.new(0, 1)
+				bar.Position = UDim2.fromScale(0, 1)
+				local pct = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+				bar.Size = UDim2.fromScale(1, pct)
+				bar.BackgroundColor3 = pct > 0.45 and Color3.fromRGB(90, 255, 130) or Color3.fromRGB(255, 70, 90)
+				bar.BorderSizePixel = 0
+				bar.Parent = bg
+			end
+		end
+	end
+end)
+
+print("[CuteGirl] patch ready (dropdown aim/gun/visuals)")
