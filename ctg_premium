@@ -622,11 +622,13 @@ local Tabs = {
     Visuals = Window:AddTab('Visual'),
     Move = Window:AddTab('Player'),
     Teleport = Window:AddTab('Utility'),
-    AntiAim = Window:AddTab('AA'),
+    Misc = Window:AddTab('Misc'),
     Skybox = Window:AddTab('World'),
     Spoofer = Window:AddTab('Spoof'),
     ['UI Settings'] = Window:AddTab('UI Settings'),
 }
+Tabs.AntiAim = Tabs.Misc -- AA groupboxes go under Misc
+
 
 local LegitGroup = Tabs.Legit:AddLeftGroupbox('Assist')
 local SilentAimGroup = Tabs.Legit:AddRightGroupbox('Silent')
@@ -762,27 +764,102 @@ HitLogList.VerticalAlignment = Enum.VerticalAlignment.Bottom
 HitLogList.HorizontalAlignment = Enum.HorizontalAlignment.Right
 HitLogList.Padding = UDim.new(0, 4)
 
+-- Kicia Premium style Hit Feedback (hitmarker + damage + sound)
 function addHitLog(targetName, damage)
-    if not getgenv().HitLogEnabled then return end
-    if not damage or damage <= 0 then return end
-    
-    local msg = string.format("[honyang.ragebot] %s - %d", targetName, damage)
-    local lbl = Instance.new("TextLabel", HitLogContainer)
-    lbl.Size = UDim2.new(1, 0, 0, 20)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = msg
-    lbl.TextColor3 = Color3.fromRGB(255, 80, 80)
-    lbl.TextStrokeTransparency = 0
-    lbl.Font = Enum.Font.GothamBold
-    lbl.TextSize = 13
-    lbl.TextXAlignment = Enum.TextXAlignment.Right
-    
-    pcall(playHitSound)
-    
-    task.spawn(function()
-        task.wait(3.5)
-        if lbl then lbl:Destroy() end
-    end)
+	if not getgenv().HitLogEnabled then return end
+	if not damage or damage <= 0 then return end
+	pcall(playHitSound)
+
+	local dmg = math.floor(damage)
+	local isHead = dmg >= 50 -- rough headshot bias for style
+
+	local sg = Instance.new("ScreenGui")
+	sg.Name = "KiciaHitFeedback"
+	sg.IgnoreGuiInset = true
+	sg.ResetOnSpawn = false
+	sg.DisplayOrder = 100001
+	pcall(function()
+		if gethui then sg.Parent = gethui()
+		else sg.Parent = game:GetService("CoreGui") end
+	end)
+
+	-- center hitmarker (X)
+	local function arm(rot, len)
+		local f = Instance.new("Frame")
+		f.AnchorPoint = Vector2.new(0.5, 0.5)
+		f.Position = UDim2.fromScale(0.5, 0.5)
+		f.Size = UDim2.fromOffset(len, 2)
+		f.BackgroundColor3 = isHead and Color3.fromRGB(255, 60, 60) or Color3.fromRGB(255, 255, 255)
+		f.BorderSizePixel = 0
+		f.Rotation = rot
+		f.Parent = sg
+		local s = Instance.new("UIStroke")
+		s.Thickness = 1
+		s.Color = Color3.new(0, 0, 0)
+		s.Parent = f
+		return f
+	end
+	local a1 = arm(45, 16)
+	local a2 = arm(-45, 16)
+
+	-- damage text under crosshair
+	local lab = Instance.new("TextLabel")
+	lab.BackgroundTransparency = 1
+	lab.Size = UDim2.fromOffset(100, 28)
+	lab.AnchorPoint = Vector2.new(0.5, 0)
+	lab.Position = UDim2.new(0.5, 0, 0.5, 14)
+	lab.Font = Enum.Font.Code
+	lab.TextSize = isHead and 20 or 16
+	lab.TextStrokeTransparency = 0.15
+	lab.TextStrokeColor3 = Color3.new(0, 0, 0)
+	lab.TextColor3 = isHead and Color3.fromRGB(255, 70, 70) or Color3.fromRGB(255, 255, 255)
+	lab.Text = isHead and (tostring(dmg) .. " HS") or tostring(dmg)
+	lab.Parent = sg
+
+	-- name tag small
+	local nameL = Instance.new("TextLabel")
+	nameL.BackgroundTransparency = 1
+	nameL.Size = UDim2.fromOffset(160, 16)
+	nameL.AnchorPoint = Vector2.new(0.5, 0)
+	nameL.Position = UDim2.new(0.5, 0, 0.5, 36)
+	nameL.Font = Enum.Font.Code
+	nameL.TextSize = 12
+	nameL.TextStrokeTransparency = 0.3
+	nameL.TextColor3 = Color3.fromRGB(200, 200, 210)
+	nameL.Text = tostring(targetName or "")
+	nameL.Parent = sg
+
+	-- edge flash (hit chams feel)
+	local flash = Instance.new("Frame")
+	flash.BackgroundColor3 = isHead and Color3.fromRGB(255, 40, 40) or Color3.fromRGB(255, 255, 255)
+	flash.BackgroundTransparency = 0.85
+	flash.BorderSizePixel = 0
+	flash.Size = UDim2.fromScale(1, 1)
+	flash.Parent = sg
+
+	task.spawn(function()
+		local t0 = 0
+		while t0 < 0.45 and sg and sg.Parent do
+			t0 = t0 + 0.02
+			local p = t0 / 0.45
+			local scale = 1 + p * 0.8
+			if a1 and a1.Parent then
+				a1.Size = UDim2.fromOffset(16 * scale, 2)
+				a1.BackgroundTransparency = p
+			end
+			if a2 and a2.Parent then
+				a2.Size = UDim2.fromOffset(16 * scale, 2)
+				a2.BackgroundTransparency = p
+			end
+			lab.Position = UDim2.new(0.5, 0, 0.5, 14 - p * 20)
+			lab.TextTransparency = p * 0.9
+			lab.TextStrokeTransparency = 0.15 + p * 0.7
+			nameL.TextTransparency = p
+			flash.BackgroundTransparency = 0.85 + p * 0.15
+			task.wait(0.02)
+		end
+		pcall(function() sg:Destroy() end)
+	end)
 end
 
 local ccAngle = 0
@@ -818,14 +895,22 @@ end)
 -- Legit Groupbox
 LegitGroup:AddDropdown('AimModeDropdown', {
     Values = { 'Off', 'Aimbot', 'Silent', 'Aimbot + Silent' },
-    Default = 1,
+    Default = 'Off',
     Multi = false,
-    Text = 'Aim Mode',
+    Text = 'Aim Mode (Kicia)',
     Callback = function(Value)
         local aim = (Value == 'Aimbot' or Value == 'Aimbot + Silent')
         local sil = (Value == 'Silent' or Value == 'Aimbot + Silent')
         getgenv().AimbotEnabled = aim
         silentAimEnabled = sil
+        -- Kicia Premium style (CuteGirl patch)
+        pcall(function()
+            local CG = getgenv().CuteGirlPatch
+            if CG then
+                CG.KiciaAimbot = aim
+                CG.KiciaSilent = sil
+            end
+        end)
         FOVFrame.Visible = aim and (getgenv().FOVShowEnabled or false)
         pcall(function()
             SilentFOVFrame.Visible = sil and (silentAimShowEnabled or false)
@@ -962,7 +1047,7 @@ local function restoreOrbitDesync()
 end
 
 pcall(function()
-    RunService:BindToRenderStep("honyangOrbitRestore", Enum.RenderPriority.Last.Value, restoreOrbitDesync)
+    RunService:BindToRenderStep("cutegirlOrbitRestore", Enum.RenderPriority.Last.Value, restoreOrbitDesync)
 end)
 RunService.RenderStepped:Connect(function()
     if orbitOrigCF then restoreOrbitDesync() end
@@ -2061,18 +2146,7 @@ RunService:BindToRenderStep("CuteGirlAimbot", Enum.RenderPriority.Camera.Value +
     end
 end)
 
-VisualsGroup:AddToggle('NameEspToggle', {
-    Text = 'Name ESP',
-    Default = false,
-    Callback = function(Value) getgenv().NameEnabled = Value end
-})
-
-VisualsGroup:AddToggle('HealthEspToggle', {
-    Text = 'Health Bar ESP',
-    Default = false,
-    Callback = function(Value) getgenv().HealthEnabled = Value end
-})
-
+-- ESP: CuteGirl ESP only (see Visuals dropdown in patch)
 VisualsGroup:AddToggle('MapTransparencyToggle', {
     Text = 'Map Transparency',
     Default = false,
@@ -2479,11 +2553,15 @@ end
 
 -- Visual Customization
 CustomVisGroup:AddToggle('CustomCrosshairToggle', {
-    Text = 'Crosshair',
+    Text = 'Custom Crosshair',
     Default = false,
     Callback = function(Value)
         getgenv().CustomCrosshairEnabled = Value
-        CustomCrosshairContainer.Visible = Value
+        pcall(function()
+            if CustomCrosshairContainer then
+                CustomCrosshairContainer.Visible = Value
+            end
+        end)
     end
 })
 
@@ -2495,28 +2573,19 @@ CustomVisGroup:AddSlider('CrosshairSizeSlider', {
     Rounding = 0,
     Callback = function(Value)
         getgenv().CrosshairSize = Value
-        updateCrosshairLayout()
+        pcall(updateCrosshairLayout)
     end
 })
 
 CustomVisGroup:AddSlider('CrosshairGapSlider', {
-    Text = 'Crosshair Gap (Spacing)',
+    Text = 'Crosshair Gap',
     Default = 5,
     Min = 0,
     Max = 30,
     Rounding = 0,
     Callback = function(Value)
         getgenv().CrosshairGap = Value
-        updateCrosshairLayout()
-    end
-})
-
-CustomVisGroup:AddLabel('Crosshair Color'):AddColorPicker('CrosshairColorPicker', {
-    Default = Color3.fromRGB(255, 255, 255),
-    Callback = function(Value)
-        for _, frame in ipairs(ccFrames) do
-            frame.BackgroundColor3 = Value
-        end
+        pcall(updateCrosshairLayout)
     end
 })
 
@@ -2527,6 +2596,7 @@ CustomVisGroup:AddToggle('CrosshairSpinToggle', {
         getgenv().CrosshairSpinEnabled = Value
     end
 })
+
 
 CustomVisGroup:AddSlider('CrosshairSpinSpeedSlider', {
     Text = 'Crosshair Spin Speed',
@@ -2579,7 +2649,7 @@ CustomVisGroup:AddToggle('RageTextToggle', {
 })
 
 CustomVisGroup:AddToggle('HitLogToggle', {
-    Text = 'Show Hit Damage Log',
+    Text = 'Hit Feedback (Kicia)',
     Default = false,
     Callback = function(Value)
         getgenv().HitLogEnabled = Value
@@ -3146,17 +3216,13 @@ HitSoundGroup:AddButton('Test Hit Sound', function()
     pcall(playHitSound)
 end)
 
-MenuGroup:AddButton('Unload', function() 
-    FOVGui:Destroy()
-    SilentFOVGui:Destroy()
-    CustomUIGui:Destroy()
-    Library:Unload() 
+MenuGroup:AddButton('Unload', function()
+    pcall(function() getgenv().CuteGirl_FullUnload() end)
+    pcall(function() Library:Unload() end)
 end)
 
 Library:OnUnload(function()
-    FOVGui:Destroy()
-    SilentFOVGui:Destroy()
-    CustomUIGui:Destroy()
+    pcall(function() getgenv().CuteGirl_FullUnload() end)
     Library.Unloaded = true
 end)
 
@@ -3177,7 +3243,7 @@ pcall(function()
 	-- try find Character/Misc tab
 end)
 
-print("[CuteGirl] features ready (Honyang core)")
+print("[CuteGirl] features ready (CuteGirl core)")
 
 
 -- WalkSpeed + ThirdPerson loops
@@ -3213,6 +3279,12 @@ end)
 print("[CuteGirl] all systems ready")
 
 
+
+
+-- force disable old ESP (CuteGirl ESP used instead)
+getgenv().NameEnabled = false
+getgenv().HealthEnabled = false
+-- custom crosshair kept
 
 -- ============================================================
 -- CuteGirl patch (dropdown UI + fixed aim/gun/esp/cross/tp)
@@ -3283,7 +3355,7 @@ end
 pcall(function()
 	local g
 	if Tabs and Tabs.Legit then
-		g = Tabs.Legit:AddRightGroupbox("Precision")
+		g = Tabs.Legit:AddRightGroupbox("CuteGirl Aim")
 	elseif Tabs and Tabs.Rage then
 		g = Tabs.Rage:AddRightGroupbox("Precision")
 	end
@@ -3312,7 +3384,7 @@ end)
 
 pcall(function()
 	if not Tabs or not Tabs.Visuals then return end
-	local g = Tabs.Visuals:AddRightGroupbox("ESP Cross")
+	local g = Tabs.Visuals:AddRightGroupbox("CuteGirl ESP")
 	g:AddDropdown("CG_VisMods", {
 		Values = { "ESP", "Crosshair" },
 		Default = 0,
@@ -3778,3 +3850,317 @@ CG_Run.RenderStepped:Connect(function()
 end)
 
 print("[CuteGirl] patch ready (dropdown aim/gun/visuals)")
+
+
+-- ============================================================
+-- FULL UNLOAD + MISC (Kicia utilities)
+-- ============================================================
+getgenv().CuteGirl_FullUnload = function()
+	local kill = {
+		"AimbotEnabled","MeleeRageBotEnabled","KnifeEnabled","OrbitEnabled","VoidSpamEnabled",
+		"DesyncEnabled","NoclipEnabled","FlyEnabled","WalkSpeedEnabled","ThirdPersonEnabled",
+		"HitLogEnabled","DeviceSpooferEnabled","AntiAimEnabled","CustomCrosshairEnabled",
+		"NameEnabled","HealthEnabled","RagebotNPCOnly","RagebotFFA","InfiniteJumpEnabled",
+		"AntiAFK","AutoLoadout","AntiKatana","AntiAimMisc","UnlockAllWeapons","AutoReloadMisc",
+	}
+	for _, k in ipairs(kill) do
+		pcall(function() getgenv()[k] = false end)
+	end
+	pcall(function() silentAimEnabled = false end)
+	pcall(function()
+		if getgenv().Config then getgenv().Config.Enabled = false end
+	end)
+	pcall(function()
+		local CG = getgenv().CuteGirlPatch
+		if not CG then return end
+		CG.KiciaSilent = false
+		CG.KiciaAimbot = false
+		CG.CuteESP = false
+		CG.CuteCross = false
+		CG.KiciaTP = false
+		CG.RapidFire = false
+		CG.NoRecoil = false
+		CG.NoSpread = false
+		CG.AutoReload = false
+	end)
+	pcall(function()
+		local cam = workspace.CurrentCamera
+		if cam then cam.CameraType = Enum.CameraType.Custom end
+		local lp = game:GetService("Players").LocalPlayer
+		lp.CameraMode = Enum.CameraMode.Classic
+		lp.CameraMaxZoomDistance = 128
+	end)
+	pcall(function()
+		local char = game:GetService("Players").LocalPlayer.Character
+		if not char then return end
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum.WalkSpeed = 16
+			hum.JumpPower = 50
+			hum.PlatformStand = false
+		end
+		for _, p in ipairs(char:GetDescendants()) do
+			if p:IsA("BasePart") then
+				p.CanCollide = true
+				p.LocalTransparencyModifier = 0
+			end
+		end
+	end)
+	pcall(function() if FOVGui then FOVGui:Destroy() end end)
+	pcall(function() if SilentFOVGui then SilentFOVGui:Destroy() end end)
+	pcall(function() if CustomUIGui then CustomUIGui:Destroy() end end)
+	for _, step in ipairs({"__restore","__knife_bs","__rage_r","__knife_vk","__knife_r"}) do
+		pcall(function() game:GetService("RunService"):UnbindFromRenderStep(step) end)
+	end
+	pcall(function()
+		if getgenv().CurrentEmoteTrack then
+			getgenv().CurrentEmoteTrack:Stop()
+			getgenv().CurrentEmoteTrack = nil
+		end
+	end)
+	print("[CuteGirl] fully unloaded")
+end
+
+pcall(function()
+	if not Tabs or not Tabs.Misc then return end
+	local anti = Tabs.Misc:AddLeftGroupbox("Anti / Safety")
+	local auto = Tabs.Misc:AddRightGroupbox("Auto / Weapons")
+
+	anti:AddToggle("CG_AntiAFK", {
+		Text = "Anti AFK",
+		Default = false,
+		Callback = function(v) getgenv().AntiAFK = v end,
+	})
+	anti:AddToggle("CG_AntiKatana", {
+		Text = "Anti Katana",
+		Default = false,
+		Callback = function(v) getgenv().AntiKatana = v end,
+	})
+	anti:AddToggle("CG_AntiAimMisc", {
+		Text = "Anti Aim",
+		Default = false,
+		Callback = function(v)
+			getgenv().AntiAimEnabled = v
+			getgenv().AntiAimMisc = v
+		end,
+	})
+
+	auto:AddToggle("CG_AutoLoadout", {
+		Text = "Auto Loadout",
+		Default = false,
+		Callback = function(v) getgenv().AutoLoadout = v end,
+	})
+	auto:AddDropdown("CG_LoadoutSlot", {
+		Values = { "Primary", "Secondary", "Melee" },
+		Default = "Primary",
+		Multi = false,
+		Text = "Loadout Slot",
+		Callback = function(v) getgenv().AutoLoadoutSlot = v end,
+	})
+	auto:AddToggle("CG_UnlockWeapons", {
+		Text = "Unlock All Weapons",
+		Default = false,
+		Callback = function(v) getgenv().UnlockAllWeapons = v end,
+	})
+	auto:AddToggle("CG_AutoReloadMisc", {
+		Text = "Auto Reload",
+		Default = false,
+		Callback = function(v)
+			getgenv().AutoReloadMisc = v
+			pcall(function()
+				if getgenv().CuteGirlPatch then getgenv().CuteGirlPatch.AutoReload = v end
+			end)
+		end,
+	})
+	auto:AddToggle("CG_NoRecoilMisc", {
+		Text = "No Recoil",
+		Default = false,
+		Callback = function(v)
+			pcall(function()
+				if getgenv().CuteGirlPatch then getgenv().CuteGirlPatch.NoRecoil = v end
+			end)
+		end,
+	})
+	auto:AddToggle("CG_NoSpreadMisc", {
+		Text = "No Spread",
+		Default = false,
+		Callback = function(v)
+			pcall(function()
+				if getgenv().CuteGirlPatch then getgenv().CuteGirlPatch.NoSpread = v end
+			end)
+		end,
+	})
+	auto:AddToggle("CG_RapidMisc", {
+		Text = "Rapid Fire",
+		Default = false,
+		Callback = function(v)
+			pcall(function()
+				if getgenv().CuteGirlPatch then getgenv().CuteGirlPatch.RapidFire = v end
+			end)
+		end,
+	})
+end)
+
+task.spawn(function()
+	local vu = game:GetService("VirtualUser")
+	local lp = game:GetService("Players").LocalPlayer
+	while true do
+		task.wait(25)
+		if getgenv().AntiAFK then
+			pcall(function()
+				vu:CaptureController()
+				vu:ClickButton2(Vector2.new())
+			end)
+		end
+	end
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(0.4)
+		if not getgenv().AutoLoadout then
+			-- skip
+		else
+			pcall(function()
+				local lp = game:GetService("Players").LocalPlayer
+				local fc = require(lp.PlayerScripts.Controllers.FighterController)
+				local lf = fc.LocalFighter
+				if not lf then return end
+				local slot = getgenv().AutoLoadoutSlot or "Primary"
+				local map = { Primary = 1, Secondary = 2, Melee = 3 }
+				lf:EquipItem(map[slot] or 1)
+			end)
+		end
+	end
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(0.2)
+		if not getgenv().AntiKatana then
+			-- skip
+		else
+			pcall(function()
+				local lp = game:GetService("Players").LocalPlayer
+				local my = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+				if not my then return end
+				for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do
+					if plr ~= lp and plr.Character then
+						local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+						if hrp and (hrp.Position - my.Position).Magnitude < 10 then
+							local tool = plr.Character:FindFirstChildOfClass("Tool")
+							local n = tool and string.lower(tool.Name) or ""
+							if string.find(n, "katana") or string.find(n, "blade") then
+								my.CFrame = my.CFrame * CFrame.new(0, 0, 5)
+							end
+						end
+					end
+				end
+			end)
+		end
+	end
+end)
+
+
+
+-- ============================================================
+-- EMOTES (dropdown on/off)
+-- ============================================================
+getgenv().EmoteSpeed = getgenv().EmoteSpeed or 1
+getgenv().CurrentEmoteTrack = nil
+
+local EMOTES = {
+	["Take the L"] = 10714360343,
+	["Floss"] = 5917459365,
+	["Dolphin Dance"] = 10714347256,
+	["Orange Justice"] = 3932389329,
+	["Default Dance"] = 3360689775,
+	["Electro Shuffle"] = 3360692915,
+	["Boogie Down"] = 10713981723,
+	["Griddy"] = 13333268152,
+	["T-Pose"] = 3333499508,
+	["Wave"] = 128777973,
+	["Cheer"] = 507770677,
+	["Laugh"] = 507770818,
+	["Point"] = 507770453,
+}
+
+local function stopEmote()
+	pcall(function()
+		if getgenv().CurrentEmoteTrack then
+			getgenv().CurrentEmoteTrack:Stop(0.15)
+			getgenv().CurrentEmoteTrack:Destroy()
+			getgenv().CurrentEmoteTrack = nil
+		end
+	end)
+end
+
+local function playEmote(name)
+	stopEmote()
+	local id = EMOTES[name]
+	if not id then return end
+	local lp = game:GetService("Players").LocalPlayer
+	local char = lp.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not hum then return end
+	pcall(function()
+		local anim = Instance.new("Animation")
+		anim.AnimationId = "rbxassetid://" .. tostring(id)
+		local track = hum:LoadAnimation(anim)
+		track.Looped = true
+		track:Play(0.15)
+		track:AdjustSpeed(tonumber(getgenv().EmoteSpeed) or 1)
+		getgenv().CurrentEmoteTrack = track
+	end)
+end
+
+pcall(function()
+	if not Tabs then return end
+	local parent = Tabs.Misc or Tabs.Visuals or Tabs.Move
+	if not parent then return end
+	local g = parent:AddLeftGroupbox("Emotes")
+	local names = { "Off" }
+	local sorted = {}
+	for n in pairs(EMOTES) do table.insert(sorted, n) end
+	table.sort(sorted)
+	for _, n in ipairs(sorted) do table.insert(names, n) end
+
+	g:AddDropdown("CG_EmoteDropdown", {
+		Values = names,
+		Default = "Off",
+		Multi = false,
+		Text = "Emote",
+		Callback = function(v)
+			if not v or v == "Off" then
+				stopEmote()
+			else
+				playEmote(v)
+			end
+		end,
+	})
+	g:AddSlider("CG_EmoteSpeed", {
+		Text = "Speed",
+		Default = 1,
+		Min = 0.25,
+		Max = 3,
+		Rounding = 2,
+		Callback = function(v)
+			getgenv().EmoteSpeed = v
+			pcall(function()
+				if getgenv().CurrentEmoteTrack then
+					getgenv().CurrentEmoteTrack:AdjustSpeed(v)
+				end
+			end)
+		end,
+	})
+end)
+
+pcall(function()
+	game:GetService("Players").LocalPlayer.CharacterAdded:Connect(function()
+		stopEmote()
+	end)
+end)
+
+print("[CuteGirl] unload+misc ready")
+
+
