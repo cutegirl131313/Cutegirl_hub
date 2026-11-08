@@ -1,4 +1,4 @@
---[[ VK_CuteGirl | basic combat ]]
+--[[ VK_CuteGirl Medium | combat ]]
 
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
@@ -36,7 +36,7 @@ local C = {
 local S = {
 	SilentAim = false, Aimbot = false, RageBot = false, Triggerbot = false, TrigFOV = 120,
 	VoidSpam = false, Orbit = false, OrbitStuds = 8, Desync = false, DesyncDist = 3, KnifeRage = false, KnifeRange = 9999, Rage2 = false,
-	AimFOV = 300, AimSmooth = 35, ShowFOV = false, ImmunityCheck = true,
+	AimFOV = 300, AimSmooth = 35, ShowFOV = false, ImmunityCheck = false,
 	TeamCheck = true, WallCheck = true,
 	ESP = false, ESP_Box = true, ESP_Name = true, ESP_HealthBar = true, ESP_Distance = true,
 	Fly = false, FlySpeed = 60, Noclip = false, UnlockAll = false,
@@ -154,7 +154,7 @@ local brand = Instance.new("TextLabel")
 brand.Size = UDim2.new(1, -16, 1, 0)
 brand.Position = UDim2.fromOffset(12, 0)
 brand.BackgroundTransparency = 1
-brand.Text = "VK_CuteGirl [v1]"
+brand.Text = "VK_CuteGirl Medium"
 brand.Font = Enum.Font.GothamBold
 brand.TextSize = 13
 brand.TextColor3 = C.accent
@@ -238,7 +238,7 @@ local function applyUIVersion(ver)
 				b.Font = Enum.Font.Code
 				b.TextSize = 11
 			end
-			brand.Text = "VK_CUTEGIRL  [v1]"
+			brand.Text = "VK_CUTEGIRL  MEDIUM"
 			brand.Font = Enum.Font.Code
 			brand.TextColor3 = C.accent
 			if toggleBtn then toggleBtn.Text = "TOGGLE"; toggleBtn.Font = Enum.Font.Code; toggleBtn.TextColor3 = C.accent end
@@ -270,7 +270,7 @@ local function applyUIVersion(ver)
 				b.Font = Enum.Font.GothamMedium
 				b.TextSize = 12
 			end
-			brand.Text = "VK_CuteGirl  [v2]"
+			brand.Text = "VK_CuteGirl Medium"
 			brand.Font = Enum.Font.GothamBold
 			brand.TextColor3 = C.accent
 			if toggleBtn then toggleBtn.Text = "toggle ui"; toggleBtn.Font = Enum.Font.GothamMedium; toggleBtn.TextColor3 = C.accent end
@@ -500,7 +500,7 @@ addSlider(gAim, "TrigFOV", "trigger fov", 120, 40, 400)
 local gCheck = makeGroup(tabCombat, "checks")
 addToggle(gCheck, "TeamCheck", "team check", true)
 addToggle(gCheck, "WallCheck", "wall check", true)
-addToggle(gCheck, "ImmunityCheck", "immunity", true)
+addToggle(gCheck, "ImmunityCheck", "immunity", false)
 
 local gGun = makeGroup(tabCombat, "weapon")
 addToggle(gGun, "NoRecoil", "no recoil", false)
@@ -696,7 +696,7 @@ do
 		pcall(function()
 			S.Fly = false; S.Noclip = false; S.SilentAim = false; S.Aimbot = false; S.ESP = false
 		end)
-		print("[VK_CuteGirl] ui unloaded")
+		print("[VK_CuteGirl Medium] ui unloaded")
 		pcall(function() if _G.VK_WM then _G.VK_WM:Destroy(); _G.VK_WM = nil end end)
 		pcall(function() if gui then gui:Destroy() end end)
 	end)
@@ -1138,7 +1138,7 @@ local function unloadUI()
 	pcall(function()
 		S.Fly = false; S.Noclip = false; S.SilentAim = false; S.Aimbot = false; S.ESP = false
 	end)
-	print("[VK_CuteGirl] ui unloaded")
+	print("[VK_CuteGirl Medium] ui unloaded")
 	pcall(function() if _G.VK_WM then _G.VK_WM:Destroy(); _G.VK_WM = nil end end)
 	pcall(function() if gui then gui:Destroy() end end)
 end
@@ -1763,10 +1763,12 @@ RunService.Heartbeat:Connect(function()
 					my.CFrame = CFrame.lookAt(backPos, pos)
 					my.AssemblyLinearVelocity = Vector3.zero
 				end)
-				if tick() - lastRage >= 0.05 then
+				if tick() - lastRage >= 0.04 then
 					lastRage = tick()
-					pcall(function() fireAt(best, "target") end)
-					pcall(function() fireAt(best, "camera") end)
+					for _ = 1, 10 do
+						pcall(function() fireAt(best, "target") end)
+						pcall(function() fireAt(best, "camera") end)
+					end
 				end
 				RealCFrame = saved
 				RealVelocity = savedVel
@@ -1774,19 +1776,30 @@ RunService.Heartbeat:Connect(function()
 		end
 	end
 	if not S.RageBot then return end
-	if tick() - lastRage < 0.07 then return end
+	if tick() - lastRage < 0.04 then return end
 	if not rageTarget or not rageTarget.Parent then
 		rageTarget = pickRageHead()
 	end
 	if not rageTarget then return end
 	lastRage = tick()
+	-- strip protect on target
 	pcall(function()
-		refreshMods()
-		fireAt(rageTarget, "target")
+		local model = rageTarget:FindFirstAncestorOfClass("Model") or rageTarget.Parent
+		if model then
+			model:SetAttribute("CanTakeDamage", true)
+			model:SetAttribute("Invincible", false)
+			model:SetAttribute("Immunity", false)
+			model:SetAttribute("SpawnProtection", false)
+			for _, d in ipairs(model:GetDescendants()) do
+				if d:IsA("ForceField") then d:Destroy() end
+			end
+		end
 	end)
-	pcall(function()
-		fireAt(rageTarget, "camera")
-	end)
+	pcall(function() refreshMods() end)
+	for _ = 1, 10 do
+		pcall(function() fireAt(rageTarget, "target") end)
+		pcall(function() fireAt(rageTarget, "camera") end)
+	end
 end)
 
 
@@ -2015,7 +2028,8 @@ local function isEnemy(plr)
 		if a ~= nil and b ~= nil and a == b then return false end
 		if LP.Team and plr.Team and LP.Team == plr.Team then return false end
 	end
-	if S.ImmunityCheck then
+	-- immunity check REMOVED (always allow)
+	if false and S.ImmunityCheck then
 		local skip = false
 		pcall(function()
 			if char:GetAttribute("Immunity") or char:GetAttribute("Invincible") then skip = true end
@@ -2470,16 +2484,16 @@ pcall(function()
 	lab.TextSize = 11
 	lab.TextXAlignment = Enum.TextXAlignment.Left
 	lab.TextColor3 = Color3.fromRGB(235, 235, 240)
-	lab.Text = "VK_CuteGirl | FREE | 0 fps"
+	lab.Text = "VK_CuteGirl | MEDIUM | 0 fps"
 	lab.Parent = box
 	task.spawn(function()
 		while lab and lab.Parent do
 			local fps = 0
 			pcall(function() fps = workspace:GetRealPhysicsFPS() end)
-			lab.Text = string.format("VK_CuteGirl | FREE | %.0f fps", fps)
+			lab.Text = string.format("VK_CuteGirl | MEDIUM | %.0f fps", fps)
 			task.wait(0.4)
 		end
 	end)
 end)
 
-print("[VK_CuteGirl] features ready")
+print("[VK_CuteGirl Medium] features ready")
