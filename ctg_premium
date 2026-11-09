@@ -3447,26 +3447,40 @@ local CG_hooked = false
 
 local function CG_refresh()
 	pcall(function()
-		if not CG_Fighter then
-			CG_Fighter = require(CG_LP.PlayerScripts.Controllers.FighterController)
-		end
+		CG_Fighter = CG_Fighter or require(CG_LP.PlayerScripts.Controllers.FighterController)
 	end)
 	pcall(function()
-		if not CG_Enum then CG_Enum = require(CG_RS.Modules.EnumLibrary) end
+		CG_Enum = CG_Enum or require(CG_RS.Modules.EnumLibrary)
 	end)
 	pcall(function()
-		if not CG_Util then CG_Util = require(CG_RS.Modules.Utility) end
+		CG_Util = CG_Util or require(CG_RS.Modules.Utility)
 	end)
 	pcall(function()
-		if not CG_UseItem then
-			CG_UseItem = CG_RS.Remotes.Replication.Fighter.UseItem
-		end
+		CG_UseItem = CG_UseItem or CG_RS.Remotes.Replication.Fighter.UseItem
 	end)
 	pcall(function()
-		if not CG_SS and CG_Enum then
+		if CG_Enum then
 			CG_SS = CG_Enum:ToEnum("StartShooting")
 		end
 	end)
+end
+
+local function CG_oid()
+	CG_refresh()
+	local lf = CG_Fighter and (CG_Fighter.LocalFighter or (CG_Fighter.GetFighter and CG_Fighter:GetFighter(CG_LP)))
+	local item = lf and lf.EquippedItem
+	if not item then return nil, nil end
+	local oid
+	pcall(function()
+		if item.Get then oid = item:Get("ObjectID") end
+	end)
+	pcall(function()
+		if not oid and item.Data then oid = item.Data.ObjectID end
+	end)
+	pcall(function()
+		if not oid then oid = item.ObjectID end
+	end)
+	return oid, item
 end
 
 local function CG_sameTeam(plr)
@@ -3679,6 +3693,20 @@ CG_Run.Heartbeat:Connect(function()
 			end)
 		end)
 		CG_burst(head, 14)
+	end
+end)
+
+
+-- keep Kicia silent flag in sync with main silentAimEnabled
+task.spawn(function()
+	while true do
+		task.wait(0.2)
+		pcall(function()
+			local CG = getgenv().CuteGirlPatch
+			if not CG then return end
+			if silentAimEnabled then CG.KiciaSilent = true end
+			if getgenv().AimbotEnabled then CG.KiciaAimbot = true end
+		end)
 	end
 end)
 
@@ -4342,3 +4370,80 @@ pcall(function()
 end)
 
 print("[CuteGirl] unload+misc ready")
+
+
+-- Backup silent using main hub modules (__util / __repS) if present
+task.spawn(function()
+	local last = 0
+	local UIS = game:GetService("UserInputService")
+	local RS = game:GetService("RunService")
+	RS.Heartbeat:Connect(function()
+		local on = false
+		pcall(function() on = silentAimEnabled == true end)
+		pcall(function()
+			local CG = getgenv().CuteGirlPatch
+			if CG and CG.KiciaSilent then on = true end
+		end)
+		if not on then return end
+		if tick() - last < 0.025 then return end
+		local shooting = false
+		pcall(function()
+			shooting = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+				or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
+		end)
+		if not shooting then return end
+		last = tick()
+		pcall(function()
+			if type(CG_burst) == "function" and type(CG_pickHead) == "function" then
+				local h = CG_pickHead()
+				if h then CG_burst(h, 12) end
+				return
+			end
+		end)
+		-- hub-level fallback
+		pcall(function()
+			if not __util or not __enum or not __repS or not __FighterController then return end
+			local lf = __FighterController.LocalFighter
+			local item = lf and lf.EquippedItem
+			if not item then return end
+			local oid = item:Get("ObjectID")
+			if not oid then return end
+			local head
+			local best, bestD = nil, 1e9
+			local cam = workspace.CurrentCamera
+			local ref = cam and cam.CFrame.Position
+			for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do
+				if plr ~= game:GetService("Players").LocalPlayer and plr.Character then
+					local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+					local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+					if hum and hrp and hum.Health > 0 and ref then
+						local d = (ref - hrp.Position).Magnitude
+						if d < bestD then
+							bestD = d
+							head = plr.Character:FindFirstChild("HitboxHead")
+								or plr.Character:FindFirstChild("Head")
+								or hrp
+						end
+					end
+				end
+			end
+			if not head then return end
+			local from = cam.CFrame.Position
+			local to = head.Position
+			local e = __util:EncodeCFrame(CFrame.lookAt(from, to))
+			local hit = __util:EncodeCFrame(CFrame.new(0.43, 0.25, 0.42))
+			local data = {
+				[utf8.char(1)] = {
+					[utf8.char(0)] = e,
+					[utf8.char(1)] = e,
+					[utf8.char(2)] = head,
+					[utf8.char(3)] = hit,
+				}
+			}
+			local ss = __enum:ToEnum("StartShooting")
+			for _ = 1, 8 do
+				__repS.Remotes.Replication.Fighter.UseItem:FireServer(oid, ss, data, nil)
+			end
+		end)
+	end)
+end)
