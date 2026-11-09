@@ -893,27 +893,32 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 
 -- Legit Groupbox
-LegitGroup:AddDropdown('AimModeDropdown', {
-    Values = { 'Off', 'Aimbot', 'Silent', 'Aimbot + Silent' },
-    Default = 'Off',
-    Multi = false,
-    Text = 'Aim Mode (Kicia)',
+LegitGroup:AddToggle('AimbotMainToggle', {
+    Text = 'Aimbot',
+    Default = false,
     Callback = function(Value)
-        local aim = (Value == 'Aimbot' or Value == 'Aimbot + Silent')
-        local sil = (Value == 'Silent' or Value == 'Aimbot + Silent')
-        getgenv().AimbotEnabled = aim
-        silentAimEnabled = sil
-        -- Kicia Premium style (CuteGirl patch)
+        getgenv().AimbotEnabled = Value
         pcall(function()
             local CG = getgenv().CuteGirlPatch
-            if CG then
-                CG.KiciaAimbot = aim
-                CG.KiciaSilent = sil
-            end
+            if CG then CG.KiciaAimbot = Value end
         end)
-        FOVFrame.Visible = aim and (getgenv().FOVShowEnabled or false)
         pcall(function()
-            SilentFOVFrame.Visible = sil and (silentAimShowEnabled or false)
+            FOVFrame.Visible = Value and (getgenv().FOVShowEnabled or false)
+        end)
+    end
+})
+
+LegitGroup:AddToggle('SilentAimMainToggle', {
+    Text = 'Silent Aim',
+    Default = false,
+    Callback = function(Value)
+        silentAimEnabled = Value
+        pcall(function()
+            local CG = getgenv().CuteGirlPatch
+            if CG then CG.KiciaSilent = Value end
+        end)
+        pcall(function()
+            SilentFOVFrame.Visible = Value and (silentAimShowEnabled or false)
         end)
     end
 })
@@ -1755,10 +1760,12 @@ getgenv().RageRadius = getgenv().RageRadius or 3
 getgenv().RageAngle = getgenv().RageAngle or 180
 getgenv().RageHeight = getgenv().RageHeight or 0
 getgenv().RagebotNPCOnly = getgenv().RagebotNPCOnly or false
-getgenv().RagebotFFA = getgenv().RagebotFFA or false
+getgenv().RagebotFFA = getgenv().RagebotFFA or true
 getgenv().KnifeEnabled = getgenv().KnifeEnabled or false
 
 __runS.Heartbeat:Connect(function()
+    -- disabled: use clean Kicia/VK combat core instead
+    do return end
     local rageOn = getgenv().MeleeRageBotEnabled == true
     local knifeOn = getgenv().KnifeEnabled == true
     if not rageOn and not knifeOn then return end
@@ -3361,37 +3368,73 @@ pcall(function()
 	end
 	if not g then return end
 
-	g:AddDropdown("CG_AimMode", {
-		Values = { "Off", "Silent", "Aimbot", "Silent + Aimbot" },
-		Default = 1,
-		Multi = false,
-		Text = "Aim Mode",
+	g:AddToggle("CG_SilentToggle", {
+		Text = "Silent Aim",
+		Default = false,
 		Callback = function(v)
-			CG_applyAimMode(v)
+			CG.KiciaSilent = v
+			silentAimEnabled = v
 		end,
 	})
-
-	g:AddDropdown("CG_GunMods", {
-		Values = { "Rapid Fire", "No Spread", "No Recoil", "Auto Reload" },
-		Default = 0,
-		Multi = true,
-		Text = "Gun Mods",
+	g:AddToggle("CG_AimbotToggle", {
+		Text = "Aimbot",
+		Default = false,
 		Callback = function(v)
-			CG_applyGunMods(v)
+			CG.KiciaAimbot = v
+			getgenv().AimbotEnabled = v
 		end,
+	})
+	g:AddToggle("CG_RapidToggle", {
+		Text = "Rapid Fire",
+		Default = false,
+		Callback = function(v) CG.RapidFire = v end,
+	})
+	g:AddToggle("CG_NoSpreadToggle", {
+		Text = "No Spread",
+		Default = false,
+		Callback = function(v) CG.NoSpread = v end,
+	})
+	g:AddToggle("CG_NoRecoilToggle", {
+		Text = "No Recoil",
+		Default = false,
+		Callback = function(v) CG.NoRecoil = v end,
+	})
+	g:AddToggle("CG_AutoReloadToggle", {
+		Text = "Auto Reload",
+		Default = false,
+		Callback = function(v) CG.AutoReload = v end,
 	})
 end)
 
 pcall(function()
 	if not Tabs or not Tabs.Visuals then return end
 	local g = Tabs.Visuals:AddRightGroupbox("CuteGirl ESP")
-	g:AddDropdown("CG_VisMods", {
-		Values = { "ESP", "Crosshair" },
-		Default = 0,
-		Multi = true,
-		Text = "Visuals",
+	g:AddToggle("CG_ESPToggle", {
+		Text = "ESP",
+		Default = false,
 		Callback = function(v)
-			CG_applyVis(v)
+			CG.CuteESP = v
+			pcall(function()
+				if v then CG_applyVis({"ESP"}) else CG_applyVis({}) end
+			end)
+		end,
+	})
+	g:AddToggle("CG_CrossToggle", {
+		Text = "Crosshair",
+		Default = false,
+		Callback = function(v)
+			CG.CuteCross = v
+			pcall(function()
+				if CG_SetupCross then
+					if v then CG_SetupCross() end
+				end
+			end)
+			pcall(function()
+				if CustomCrosshairContainer then
+					CustomCrosshairContainer.Visible = v
+					getgenv().CustomCrosshairEnabled = v
+				end
+			end)
 		end,
 	})
 end)
@@ -3491,24 +3534,43 @@ local function CG_sameTeam(plr)
 end
 
 local function CG_pickHead()
-	local best, bestD = nil, 5000
-	local root = CG_LP.Character and CG_LP.Character:FindFirstChild("HumanoidRootPart")
+	local best, bestScore = nil, -1e9
 	local cam = workspace.CurrentCamera
-	local ref = (root and root.Position) or (cam and cam.CFrame.Position)
-	if not ref then return nil end
+	if not cam then return nil end
+	local root = CG_LP.Character and CG_LP.Character:FindFirstChild("HumanoidRootPart")
+	local maxDist = 2000
 	for _, plr in ipairs(CG_Players:GetPlayers()) do
-		if plr ~= CG_LP and plr.Character and not CG_sameTeam(plr) then
-			local char = plr.Character
-			local hum = char:FindFirstChildOfClass("Humanoid")
-			local hrp = char:FindFirstChild("HumanoidRootPart")
-			if hum and hrp and hum.Health > 0 then
-				local d = (ref - hrp.Position).Magnitude
-				if d < bestD then
-					bestD = d
-					best = char:FindFirstChild("HitboxHead")
+		if plr ~= CG_LP and plr.Character then
+			-- team: only skip if both have team id match; FFA ok
+			local skip = false
+			pcall(function()
+				if CG_sameTeam and CG_sameTeam(plr) then
+					-- allow if RagebotFFA
+					if not getgenv().RagebotFFA then skip = true end
+				end
+			end)
+			if not skip then
+				local char = plr.Character
+				local hum = char:FindFirstChildOfClass("Humanoid")
+				local hrp = char:FindFirstChild("HumanoidRootPart")
+				if hum and hrp and hum.Health > 0 then
+					local head = char:FindFirstChild("HitboxHead")
 						or char:FindFirstChild("HitboxHeadSmall")
 						or char:FindFirstChild("Head")
 						or hrp
+					local dist = (cam.CFrame.Position - head.Position).Magnitude
+					if dist < maxDist then
+						local sp = cam:WorldToViewportPoint(head.Position)
+						local cx, cy = cam.ViewportSize.X * 0.5, cam.ViewportSize.Y * 0.5
+						local onScreen = sp.Z > 0
+						local screenDist = (Vector2.new(sp.X, sp.Y) - Vector2.new(cx, cy)).Magnitude
+						-- prefer crosshair-close targets
+						local score = (onScreen and 5000 or 0) - screenDist - dist * 0.15
+						if score > bestScore then
+							bestScore = score
+							best = head
+						end
+					end
 				end
 			end
 		end
@@ -3516,14 +3578,16 @@ local function CG_pickHead()
 	return best
 end
 
+-- ========== COMBAT CORE (hub modules + CG fallback) ==========
 local function CG_encode(from, to, head)
-	if not head or typeof(from) ~= "Vector3" or typeof(to) ~= "Vector3" then return nil end
-	CG_refresh()
-	if not (CG_Util and CG_Util.EncodeCFrame) then return nil end
+	if typeof(from) ~= "Vector3" or typeof(to) ~= "Vector3" or not head then return nil end
+	-- prefer main hub util
+	local util = rawget(getfenv(), "__util") or CG_Util
+	pcall(function() if not util then CG_refresh(); util = CG_Util end end)
+	if not util or type(util.EncodeCFrame) ~= "function" then return nil end
 	local ok, data = pcall(function()
-		local aim = CFrame.lookAt(from, to)
-		local e = CG_Util:EncodeCFrame(aim)
-		local hit = CG_Util:EncodeCFrame(CFrame.new(0.43, 0.25, 0.42))
+		local e = util:EncodeCFrame(CFrame.new(from, to))
+		local hit = util:EncodeCFrame(CFrame.new(0.43, 0.25, 0.42))
 		return {
 			[utf8.char(1)] = {
 				[utf8.char(0)] = e,
@@ -3533,59 +3597,117 @@ local function CG_encode(from, to, head)
 			},
 		}
 	end)
-	return ok and data or nil
+	return (ok and data) or nil
+end
+
+local function CG_getOid()
+	CG_refresh()
+	local lf = (CG_Fighter and CG_Fighter.LocalFighter)
+		or (rawget(getfenv(), "__FighterController") and __FighterController.LocalFighter)
+	if not lf then return nil end
+	if not lf.EquippedItem then
+		pcall(function() lf:EquipItem(1) end)
+	end
+	local item = lf.EquippedItem
+	if not item then return nil end
+	local oid
+	pcall(function() if item.Get then oid = item:Get("ObjectID") end end)
+	pcall(function() if not oid and item.Data then oid = item.Data.ObjectID end end)
+	return oid
+end
+
+local function CG_getSS()
+	CG_refresh()
+	if CG_SS then return CG_SS end
+	local en = CG_Enum or rawget(getfenv(), "__enum")
+	if en then
+		local ok, ss = pcall(function() return en:ToEnum("StartShooting") end)
+		if ok then CG_SS = ss; return ss end
+	end
+	return nil
+end
+
+local function CG_getRemote()
+	CG_refresh()
+	if CG_UseItem then return CG_UseItem end
+	local ok, r = pcall(function()
+		return game:GetService("ReplicatedStorage").Remotes.Replication.Fighter.UseItem
+	end)
+	if ok then CG_UseItem = r end
+	return CG_UseItem
 end
 
 local function CG_fire(head, mode)
 	if not head or not head.Parent then return false end
-	CG_refresh()
-	if not CG_UseItem or not CG_SS then return false end
-	local oid = select(1, CG_oid())
-	if not oid then
-		-- try equip first
-		pcall(function()
-			local lf = CG_Fighter and (CG_Fighter.LocalFighter or (CG_Fighter.GetFighter and CG_Fighter:GetFighter(CG_LP)))
-			if lf and lf.EquipItem then lf:EquipItem(1) end
-		end)
-		oid = select(1, CG_oid())
-	end
-	if not oid then return false end
+	local remote = CG_getRemote()
+	local ss = CG_getSS()
+	local oid = CG_getOid()
+	if not remote or not ss or not oid then return false end
 	local cam = workspace.CurrentCamera
 	local root = CG_LP.Character and CG_LP.Character:FindFirstChild("HumanoidRootPart")
 	local hp = head.Position
 	local from
 	if mode == "target" then
-		from = hp + Vector3.new(0, 0.12, 0)
+		from = hp + Vector3.new(0, 0.1, 0)
 	elseif mode == "above" then
-		from = hp + Vector3.new(0, 2.2, 0)
-	elseif mode == "back" then
-		local model = head:FindFirstAncestorOfClass("Model") or head.Parent
-		local th = model and model:FindFirstChild("HumanoidRootPart")
-		from = th and (th.Position - th.CFrame.LookVector * 2.8 + Vector3.new(0, 0.3, 0)) or (hp + Vector3.new(0, 0.2, 0))
+		from = hp + Vector3.new(0, 1.5, 0)
 	else
 		from = (cam and cam.CFrame.Position) or (root and root.Position) or hp
 	end
 	local data = CG_encode(from, hp, head)
 	if not data then return false end
-	return pcall(function()
-		CG_UseItem:FireServer(oid, CG_SS, data, nil)
+	local ok = pcall(function()
+		remote:FireServer(oid, ss, data, nil)
 	end)
+	return ok
 end
 
-local function CG_burst(head, n)
+local function CG_volleys(head, n)
 	if not head then return end
-	n = n or 8
-	for i = 1, n do
-		local modes = { "target", "camera", "above", "target", "camera" }
-		CG_fire(head, modes[((i - 1) % #modes) + 1])
+	for i = 1, (n or 6) do
+		if i % 3 == 1 then CG_fire(head, "target")
+		elseif i % 3 == 2 then CG_fire(head, "camera")
+		else CG_fire(head, "above") end
 	end
 end
 
--- Silent: hold fire = multi packet head (Kicia density)
-local lastCGSilent = 0
+-- namecall silent rewrite
+pcall(function()
+	if CG_hooked or type(hookmetamethod) ~= "function" then return end
+	CG_hooked = true
+	CG_refresh()
+	local useItem = CG_getRemote()
+	if not useItem then return end
+	local wrap = newcclosure or function(f) return f end
+	local old
+	old = hookmetamethod(game, "__namecall", wrap(function(self, ...)
+		local method = getnamecallmethod()
+		local args = { ... }
+		if method == "FireServer" and self == useItem then
+			local on = false
+			pcall(function() on = CG.KiciaSilent or silentAimEnabled end)
+			if on and type(args[3]) == "table" then
+				local head = CG_pickHead()
+				if head then
+					local cam = workspace.CurrentCamera
+					local from = cam and cam.CFrame.Position or head.Position
+					local data = CG_encode(from, head.Position, head)
+					if data then args[3] = data end
+				end
+			end
+			return old(self, unpack(args))
+		end
+		return old(self, ...)
+	end))
+end)
+
+-- Silent assist (hold fire)
+local lastS = 0
 CG_Run.Heartbeat:Connect(function()
-	if not CG.KiciaSilent and not silentAimEnabled then return end
-	if tick() - lastCGSilent < 0.02 then return end
+	local on = false
+	pcall(function() on = CG.KiciaSilent or silentAimEnabled end)
+	if not on then return end
+	if tick() - lastS < 0.04 then return end
 	local shooting = false
 	pcall(function()
 		shooting = CG_UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
@@ -3594,66 +3716,37 @@ CG_Run.Heartbeat:Connect(function()
 	if not shooting then return end
 	local head = CG_pickHead()
 	if not head then return end
-	lastCGSilent = tick()
-	CG_burst(head, 10)
+	lastS = tick()
+	CG_volleys(head, 6)
 end)
 
--- namecall rewrite: every real shot becomes headshot data
-pcall(function()
-	if CG_hooked or not hookmetamethod then return end
-	CG_hooked = true
-	CG_refresh()
-	local useItem = CG_RS.Remotes.Replication.Fighter.UseItem
-	local wrap = newcclosure or function(f) return f end
-	local old
-	old = hookmetamethod(game, "__namecall", wrap(function(self, ...)
-		local method = getnamecallmethod()
-		local args = { ... }
-		if method == "FireServer" and self == useItem then
-			if CG.KiciaSilent or silentAimEnabled then
-				local head = CG_pickHead()
-				if head and type(args[3]) == "table" then
-					local cam = workspace.CurrentCamera
-					local from = cam and cam.CFrame.Position or head.Position
-					local data = CG_encode(from, head.Position, head)
-					if data then args[3] = data end
-					return old(self, unpack(args))
-				end
-			end
-		end
-		return old(self, ...)
-	end))
-end)
-
--- Aimbot sticky strong
-CG_Run.RenderStepped:Connect(function()
-	if not CG.KiciaAimbot and not getgenv().AimbotEnabled then return end
+-- Aimbot
+CG_Run.RenderStepped:Connect(function(dt)
+	local on = false
+	pcall(function() on = CG.KiciaAimbot or getgenv().AimbotEnabled end)
+	if not on then return end
 	local head = CG_pickHead()
-	if not head then return end
 	local cam = workspace.CurrentCamera
-	if not cam then return end
-	local goal = CFrame.lookAt(cam.CFrame.Position, head.Position)
-	cam.CFrame = cam.CFrame:Lerp(goal, 0.85)
+	if not head or not cam then return end
+	cam.CFrame = cam.CFrame:Lerp(CFrame.lookAt(cam.CFrame.Position, head.Position), 0.65)
 end)
 
--- Kicia Rage override (also listens MeleeRageBotEnabled)
-local lastCGRage = 0
+-- Rage / Knife
+local lastR = 0
 CG_Run.Heartbeat:Connect(function()
 	if not getgenv().MeleeRageBotEnabled and not getgenv().KnifeEnabled then return end
-	if tick() - lastCGRage < 0.025 then return end
+	if tick() - lastR < 0.04 then return end
 	local head = CG_pickHead()
 	if not head then return end
-	lastCGRage = tick()
+	lastR = tick()
 
-	-- strip protect
 	pcall(function()
-		local model = head:FindFirstAncestorOfClass("Model") or head.Parent
-		if not model then return end
-		model:SetAttribute("CanTakeDamage", true)
-		model:SetAttribute("Invincible", false)
-		model:SetAttribute("Immunity", false)
-		model:SetAttribute("SpawnProtection", false)
-		for _, d in ipairs(model:GetDescendants()) do
+		local m = head:FindFirstAncestorOfClass("Model") or head.Parent
+		if not m then return end
+		m:SetAttribute("CanTakeDamage", true)
+		m:SetAttribute("Invincible", false)
+		m:SetAttribute("SpawnProtection", false)
+		for _, d in ipairs(m:GetDescendants()) do
 			if d:IsA("ForceField") then d:Destroy() end
 		end
 	end)
@@ -3667,46 +3760,32 @@ CG_Run.Heartbeat:Connect(function()
 			local lf = CG_Fighter and CG_Fighter.LocalFighter
 			if lf then lf:EquipItem(3) end
 		end)
-		local back = th.Position - th.CFrame.LookVector * 2.8 + Vector3.new(0, 0.25, 0)
+		local back = th.Position - th.CFrame.LookVector * 2.7 + Vector3.new(0, 0.25, 0)
 		local saved, vel = hrp.CFrame, hrp.AssemblyLinearVelocity
 		hrp.CFrame = CFrame.lookAt(back, th.Position)
 		hrp.AssemblyLinearVelocity = Vector3.zero
 		pcall(function()
-			CG_Run:BindToRenderStep("__kicia_knife", Enum.RenderPriority.Camera.Value - 1, function()
+			CG_Run:BindToRenderStep("__kr2", Enum.RenderPriority.Camera.Value - 1, function()
 				if hrp then hrp.CFrame = saved; hrp.AssemblyLinearVelocity = vel end
-				pcall(function() CG_Run:UnbindFromRenderStep("__kicia_knife") end)
+				pcall(function() CG_Run:UnbindFromRenderStep("__kr2") end)
 			end)
 		end)
-		CG_burst(head, 12)
+		CG_volleys(head, 8)
 		return
 	end
 
 	if getgenv().MeleeRageBotEnabled and hrp then
-		local above = head.Position + Vector3.new(0, 2.0, 0)
+		local above = head.Position + Vector3.new(0, 1.4, 0)
 		local saved, vel = hrp.CFrame, hrp.AssemblyLinearVelocity
 		hrp.CFrame = CFrame.lookAt(above, head.Position)
 		hrp.AssemblyLinearVelocity = Vector3.zero
 		pcall(function()
-			CG_Run:BindToRenderStep("__kicia_rage", Enum.RenderPriority.Camera.Value - 1, function()
+			CG_Run:BindToRenderStep("__rr2", Enum.RenderPriority.Camera.Value - 1, function()
 				if hrp then hrp.CFrame = saved; hrp.AssemblyLinearVelocity = vel end
-				pcall(function() CG_Run:UnbindFromRenderStep("__kicia_rage") end)
+				pcall(function() CG_Run:UnbindFromRenderStep("__rr2") end)
 			end)
 		end)
-		CG_burst(head, 14)
-	end
-end)
-
-
--- keep Kicia silent flag in sync with main silentAimEnabled
-task.spawn(function()
-	while true do
-		task.wait(0.2)
-		pcall(function()
-			local CG = getgenv().CuteGirlPatch
-			if not CG then return end
-			if silentAimEnabled then CG.KiciaSilent = true end
-			if getgenv().AimbotEnabled then CG.KiciaAimbot = true end
-		end)
+		CG_volleys(head, 8)
 	end
 end)
 
@@ -4372,78 +4451,3 @@ end)
 print("[CuteGirl] unload+misc ready")
 
 
--- Backup silent using main hub modules (__util / __repS) if present
-task.spawn(function()
-	local last = 0
-	local UIS = game:GetService("UserInputService")
-	local RS = game:GetService("RunService")
-	RS.Heartbeat:Connect(function()
-		local on = false
-		pcall(function() on = silentAimEnabled == true end)
-		pcall(function()
-			local CG = getgenv().CuteGirlPatch
-			if CG and CG.KiciaSilent then on = true end
-		end)
-		if not on then return end
-		if tick() - last < 0.025 then return end
-		local shooting = false
-		pcall(function()
-			shooting = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
-				or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
-		end)
-		if not shooting then return end
-		last = tick()
-		pcall(function()
-			if type(CG_burst) == "function" and type(CG_pickHead) == "function" then
-				local h = CG_pickHead()
-				if h then CG_burst(h, 12) end
-				return
-			end
-		end)
-		-- hub-level fallback
-		pcall(function()
-			if not __util or not __enum or not __repS or not __FighterController then return end
-			local lf = __FighterController.LocalFighter
-			local item = lf and lf.EquippedItem
-			if not item then return end
-			local oid = item:Get("ObjectID")
-			if not oid then return end
-			local head
-			local best, bestD = nil, 1e9
-			local cam = workspace.CurrentCamera
-			local ref = cam and cam.CFrame.Position
-			for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do
-				if plr ~= game:GetService("Players").LocalPlayer and plr.Character then
-					local hum = plr.Character:FindFirstChildOfClass("Humanoid")
-					local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
-					if hum and hrp and hum.Health > 0 and ref then
-						local d = (ref - hrp.Position).Magnitude
-						if d < bestD then
-							bestD = d
-							head = plr.Character:FindFirstChild("HitboxHead")
-								or plr.Character:FindFirstChild("Head")
-								or hrp
-						end
-					end
-				end
-			end
-			if not head then return end
-			local from = cam.CFrame.Position
-			local to = head.Position
-			local e = __util:EncodeCFrame(CFrame.lookAt(from, to))
-			local hit = __util:EncodeCFrame(CFrame.new(0.43, 0.25, 0.42))
-			local data = {
-				[utf8.char(1)] = {
-					[utf8.char(0)] = e,
-					[utf8.char(1)] = e,
-					[utf8.char(2)] = head,
-					[utf8.char(3)] = hit,
-				}
-			}
-			local ss = __enum:ToEnum("StartShooting")
-			for _ = 1, 8 do
-				__repS.Remotes.Replication.Fighter.UseItem:FireServer(oid, ss, data, nil)
-			end
-		end)
-	end)
-end)
