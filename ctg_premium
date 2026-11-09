@@ -126,56 +126,72 @@ RageBox:AddSlider("OrbitStuds", { Text = "Orbit Studs", Default = 8, Min = 2, Ma
 RageBox:AddToggle("VoidSpamRage", { Text = "Void Spam", Default = false, Callback = function(v) S.VoidSpam = v end })
 RageBox:AddSlider("DesyncDist", { Text = "Desync Dist", Default = 3, Min = 1, Max = 15, Rounding = 0, Callback = function(v) if setDesyncDist then setDesyncDist(v) end end })
 
--- Kicia+ features
-local KTab = Window:AddTab("Kicia+")
-local gKMove = KTab:AddLeftGroupbox("Movement+")
-gKMove:AddToggle("InfJump", { Text = "Infinite Jump", Default = false, Callback = function(v) S.InfJump = v end })
-gKMove:AddToggle("DoubleJump", { Text = "Double Jump", Default = false, Callback = function(v) S.DoubleJump = v end })
-gKMove:AddToggle("JumpPower", { Text = "Jump Power", Default = false, Callback = function(v) S.JumpPower = v end })
-gKMove:AddSlider("JumpVal", { Text = "Jump Value", Default = 80, Min = 50, Max = 250, Rounding = 0, Callback = function(v) S.JumpVal = v end })
-gKMove:AddToggle("BunnyHop", { Text = "Bunny Hop", Default = false, Callback = function(v) S.BunnyHop = v end })
-gKMove:AddToggle("Spinbot", { Text = "Spinbot", Default = false, Callback = function(v) S.Spinbot = v end })
-gKMove:AddSlider("SpinSpd", { Text = "Spin Speed", Default = 15, Min = 5, Max = 50, Rounding = 0, Callback = function(v) S.SpinSpd = v end })
-gKMove:AddToggle("ThirdPerson", { Text = "Third Person", Default = false, Callback = function(v)
-	S.ThirdPerson = v
-	if not v then
-		local cam = workspace.CurrentCamera
-		if cam then cam.CameraType = Enum.CameraType.Custom end
-	end
-end })
-gKMove:AddSlider("ThirdDist", { Text = "TP Distance", Default = 8, Min = 3, Max = 25, Rounding = 0, Callback = function(v) S.ThirdDist = v end })
+-- Extra features: Movement/misc in Misc, visuals in Visuals
+do
+	-- Character keeps only core movement (Fly/Noclip already there)
+	local CamBox = Tabs.Character:AddRightGroupbox("Camera")
+	CamBox:AddToggle("ThirdPerson", { Text = "Third Person", Default = false, Callback = function(v)
+		S.ThirdPerson = v
+		if not v then
+			local cam = workspace.CurrentCamera
+			if cam then cam.CameraType = Enum.CameraType.Custom end
+		end
+	end })
+	CamBox:AddSlider("ThirdDist", { Text = "TP Distance", Default = 8, Min = 3, Max = 25, Rounding = 0, Callback = function(v) S.ThirdDist = v end })
+	CamBox:AddToggle("CamFOV", { Text = "Camera FOV", Default = false, Callback = function(v)
+		S.CamFOV = v
+		if not v then local cam = workspace.CurrentCamera; if cam then cam.FieldOfView = 70 end end
+	end })
+	CamBox:AddSlider("CamFOVVal", { Text = "FOV Value", Default = 90, Min = 50, Max = 120, Rounding = 0, Callback = function(v) S.CamFOVVal = v end })
+	CamBox:AddToggle("HideMuzzle", { Text = "Hide Muzzle Flash", Default = false, Callback = function(v) S.HideMuzzle = v end })
 
-local gKVis = KTab:AddRightGroupbox("Visual+")
-gKVis:AddToggle("Tracers", { Text = "Bullet Tracers", Default = false, Callback = function(v) S.Tracers = v end })
-gKVis:AddSlider("TracerLife", { Text = "Tracer Life", Default = 0.5, Min = 0.1, Max = 2, Rounding = 1, Callback = function(v) S.TracerLife = v end })
-gKVis:AddToggle("HitFlash", { Text = "Hit Flash", Default = false, Callback = function(v) S.HitFlash = v end })
-gKVis:AddToggle("ElimSound", { Text = "Elim Sound", Default = false, Callback = function(v) S.ElimSound = v end })
-gKVis:AddToggle("Fullbright", { Text = "Fullbright", Default = false, Callback = function(v) S.Fullbright = v; pcall(applyFullbright, v) end })
-gKVis:AddToggle("Skybox", { Text = "Skybox", Default = false, Callback = function(v) S.Skybox = v; pcall(applySkybox) end })
-gKVis:AddDropdown("SkyStyle", {
-	Values = { "Cloudy", "Night", "Pink", "Nebula" }, Default = "Cloudy", Multi = false, Text = "Sky Style",
-	Callback = function(v) S.SkyStyle = v; if S.Skybox then pcall(applySkybox) end end,
-})
-gKVis:AddToggle("CamFOV", { Text = "Camera FOV", Default = false, Callback = function(v)
-	S.CamFOV = v
-	if not v then
-		local cam = workspace.CurrentCamera
-		if cam then cam.FieldOfView = 70 end
-	end
-end })
-gKVis:AddSlider("CamFOVVal", { Text = "FOV Value", Default = 90, Min = 50, Max = 120, Rounding = 0, Callback = function(v) S.CamFOVVal = v end })
-gKVis:AddToggle("HideMuzzle", { Text = "Hide Muzzle Flash", Default = false, Callback = function(v) S.HideMuzzle = v end })
+	local Vis2 = Tabs.Visuals:AddRightGroupbox("Effects+")
+	Vis2:AddToggle("Tracers", { Text = "Bullet Tracers", Default = false, Callback = function(v) S.Tracers = v end })
+	Vis2:AddSlider("TracerLife", { Text = "Tracer Life", Default = 0.5, Min = 0.1, Max = 2, Rounding = 1, Callback = function(v) S.TracerLife = v end })
+	Vis2:AddToggle("HitFlash", { Text = "Hit Flash", Default = false, Callback = function(v) S.HitFlash = v end })
+	Vis2:AddToggle("ElimSound", { Text = "Elim Sound", Default = false, Callback = function(v) S.ElimSound = v end })
+	Vis2:AddToggle("Fullbright", { Text = "Fullbright", Default = false, Callback = function(v) S.Fullbright = v; pcall(applyFullbright, v) end })
+	Vis2:AddToggle("Skybox", { Text = "Skybox", Default = false, Callback = function(v) S.Skybox = v; pcall(applySkybox) end })
+	Vis2:AddDropdown("SkyStyle", {
+		Values = { "Cloudy", "Night", "Pink", "Nebula" }, Default = "Cloudy", Multi = false, Text = "Sky Style",
+		Callback = function(v) S.SkyStyle = v; if S.Skybox then pcall(applySkybox) end end,
+	})
 
-local gKEmote = KTab:AddLeftGroupbox("Emotes")
-local _emoteList = { "Off", "Take the L", "Floss", "Gangnam Style", "Worm Dance", "Hype Dance", "Griddy", "Wave", "Cheer", "Laugh" }
-gKEmote:AddDropdown("EmoteDrop", {
-	Values = _emoteList, Default = "Off", Multi = false, Text = "Emote",
-	Callback = function(v) S.Emote = v; pcall(playHubEmote, v) end,
-})
-gKEmote:AddSlider("EmoteSpeed", {
-	Text = "Emote Speed", Default = 1, Min = 0.25, Max = 3, Rounding = 2,
-	Callback = function(v) S.EmoteSpeed = v; pcall(function() if _emoteTrack then _emoteTrack:AdjustSpeed(v) end end) end,
-})
+	-- Misc: jumps / movement extras / emotes / utility
+	local MiscMove = Tabs.Misc:AddLeftGroupbox("Movement Extras")
+	MiscMove:AddToggle("InfJump", { Text = "Infinite Jump", Default = false, Callback = function(v) S.InfJump = v end })
+	MiscMove:AddToggle("DoubleJump", { Text = "Double Jump", Default = false, Callback = function(v) S.DoubleJump = v end })
+	MiscMove:AddToggle("JumpPower", { Text = "Jump Power", Default = false, Callback = function(v) S.JumpPower = v end })
+	MiscMove:AddSlider("JumpVal", { Text = "Jump Value", Default = 80, Min = 50, Max = 250, Rounding = 0, Callback = function(v) S.JumpVal = v end })
+	MiscMove:AddToggle("BunnyHop", { Text = "Bunny Hop", Default = false, Callback = function(v) S.BunnyHop = v end })
+	MiscMove:AddToggle("Spinbot", { Text = "Spinbot", Default = false, Callback = function(v) S.Spinbot = v end })
+	MiscMove:AddSlider("SpinSpd", { Text = "Spin Speed", Default = 15, Min = 5, Max = 50, Rounding = 0, Callback = function(v) S.SpinSpd = v end })
+
+	local MiscE = Tabs.Misc:AddRightGroupbox("Emotes")
+	local _emoteList = { "Off", "Take the L", "Floss", "Gangnam Style", "Worm Dance", "Hype Dance", "Griddy", "Wave", "Cheer", "Laugh" }
+	MiscE:AddDropdown("EmoteDrop", {
+		Values = _emoteList, Default = "Off", Multi = false, Text = "Emote",
+		Callback = function(v) S.Emote = v; pcall(playHubEmote, v) end,
+	})
+	MiscE:AddSlider("EmoteSpeed", {
+		Text = "Emote Speed", Default = 1, Min = 0.25, Max = 3, Rounding = 2,
+		Callback = function(v) S.EmoteSpeed = v; pcall(function() if _emoteTrack then _emoteTrack:AdjustSpeed(v) end end) end,
+	})
+
+	local MiscU = Tabs.Misc:AddRightGroupbox("Utility+")
+	MiscU:AddToggle("AutoReload", { Text = "Auto Reload", Default = false, Callback = function(v) S.AutoReload = v end })
+	MiscU:AddButton("Rejoin", function()
+		pcall(function()
+			game:GetService("TeleportService"):Teleport(game.PlaceId, game:GetService("Players").LocalPlayer)
+		end)
+	end)
+	MiscU:AddButton("Copy JobId", function()
+		pcall(function()
+			local s = setclipboard or toclipboard
+			if s then s(game.JobId); Library:Notify("JobId copied", 2) end
+		end)
+	end)
+end
 
 -- Settings
 local MenuBox = Tabs.Settings:AddLeftGroupbox("Menu")
@@ -1052,16 +1068,22 @@ local function getTarget(ignoreWall, fov)
 end
 
 local function encodeShot(from, to, head)
-	if not Utility then return nil end
-	local e = Utility:EncodeCFrame(CFrame.new(from, to))
-	return {
-		[utf8.char(1)] = {
-			[utf8.char(0)] = e,
-			[utf8.char(1)] = e,
-			[utf8.char(2)] = head,
-			[utf8.char(3)] = Utility:EncodeCFrame(CFrame.new(0.43, 0.25, 0.42)),
-		},
-	}
+	if not Utility or not head then return nil end
+	-- always aim at head center
+	if head.Position then to = head.Position end
+	local ok, data = pcall(function()
+		local e = Utility:EncodeCFrame(CFrame.lookAt(from, to))
+		local hit = Utility:EncodeCFrame(CFrame.new(0.43, 0.25, 0.42))
+		return {
+			[utf8.char(1)] = {
+				[utf8.char(0)] = e,
+				[utf8.char(1)] = e,
+				[utf8.char(2)] = head,
+				[utf8.char(3)] = hit,
+			},
+		}
+	end)
+	return ok and data or nil
 end
 
 task.spawn(function()
@@ -1161,29 +1183,42 @@ RunService.Heartbeat:Connect(function()
 			or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
 	end)
 	if not holding then return end
-	if tick() - lastSilent < 0.05 then return end
-	local head = getTarget(false, S.AimFOV or 300)
+	if tick() - lastSilent < 0.04 then return end
+	lastSilent = tick()
+	local head = getTarget(false, S.AimFOV or 400)
+	if not head then
+		head = getCrosshair(S.AimFOV or 400)
+	end
 	if not head then return end
-	local char = head.Parent
-	if char then
-		local h = char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head")
+	-- prefer HitboxHead
+	local model = head:FindFirstAncestorOfClass("Model") or head.Parent
+	if model then
+		local h = model:FindFirstChild("HitboxHead") or model:FindFirstChild("HitboxHeadSmall") or model:FindFirstChild("Head")
 		if h then head = h end
 	end
 	refreshMods()
 	if not (Utility and EnumLibrary and UseItem) then return end
-	local lf = getFighter()
+	local lf = getFighter and getFighter() or nil
 	if not lf or not lf.EquippedItem then return end
-	local ok, oid = pcall(function() return lf.EquippedItem:Get("ObjectID") end)
-	local okE, se = pcall(function() return EnumLibrary:ToEnum("StartShooting") end)
-	if not (ok and oid and okE and se) then return end
-	local root = getRootPart()
-	local from = root and root.Position or Cam.CFrame.Position
-	local data = encodeShot(from, head.Position, head)
-	if data then
-		pcall(function() UseItem:FireServer(oid, se, data, nil) end)
-		lastSilent = tick()
+	local oid
+	pcall(function() oid = lf.EquippedItem:Get("ObjectID") end)
+	pcall(function() if not oid and lf.EquippedItem.Data then oid = lf.EquippedItem.Data.ObjectID end end)
+	local se
+	pcall(function() se = EnumLibrary:ToEnum("StartShooting") end)
+	if not oid or not se then return end
+	local cam = Workspace.CurrentCamera
+	local root = getRootPart and getRootPart() or (LP.Character and LP.Character:FindFirstChild("HumanoidRootPart"))
+	local fromCam = cam and cam.CFrame.Position or head.Position
+	local fromRoot = root and root.Position or fromCam
+	local fromTarget = head.Position + Vector3.new(0, 0.12, 0)
+	for _, from in ipairs({ fromCam, fromTarget, fromCam, fromTarget }) do
+		local data = encodeShot(from, head.Position, head)
+		if data then
+			pcall(function() UseItem:FireServer(oid, se, data, nil) end)
+		end
 	end
 end)
+
 
 local lastTrig = 0
 RunService.Heartbeat:Connect(function()
@@ -2071,43 +2106,64 @@ task.spawn(function()
 	sg.IgnoreGuiInset = true
 	sg.DisplayOrder = 50
 	sg.Parent = pg
+
 	local root = Instance.new("Frame")
 	root.AnchorPoint = Vector2.new(0.5, 0.5)
 	root.Position = UDim2.fromScale(0.5, 0.5)
-	root.Size = UDim2.fromOffset(44, 44)
+	root.Size = UDim2.fromOffset(80, 80)
 	root.BackgroundTransparency = 1
 	root.Visible = false
 	root.Parent = sg
-	local ring = Instance.new("Frame")
-	ring.AnchorPoint = Vector2.new(0.5, 0.5)
-	ring.Position = UDim2.fromScale(0.5, 0.5)
-	ring.Size = UDim2.fromOffset(32, 32)
-	ring.BackgroundTransparency = 1
-	ring.Parent = root
-	Instance.new("UICorner", ring).CornerRadius = UDim.new(1, 0)
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2.5
-	stroke.Parent = ring
-	local fills = {}
-	for i = 0, 3 do
-		local t = Instance.new("Frame")
-		t.AnchorPoint = Vector2.new(0.5, 0.5)
-		t.Size = UDim2.fromOffset(3, 8)
-		t.BorderSizePixel = 0
-		t.Parent = root
-		Instance.new("UICorner", t).CornerRadius = UDim.new(1, 0)
-		local ang = math.rad(i * 90)
-		t.Position = UDim2.new(0.5, math.cos(ang) * 16, 0.5, math.sin(ang) * 16)
-		t.Rotation = i * 90 + 90
-		fills[i + 1] = t
+
+	local function arm()
+		local f = Instance.new("Frame")
+		f.AnchorPoint = Vector2.new(0.5, 0.5)
+		f.BorderSizePixel = 0
+		f.Parent = root
+		local o = Instance.new("UIStroke")
+		o.Thickness = 1.5
+		o.Color = Color3.new(0, 0, 0)
+		o.Parent = f
+		return f
 	end
+	local up, down, left, right = arm(), arm(), arm(), arm()
+
+	local brand = Instance.new("TextLabel")
+	brand.AnchorPoint = Vector2.new(0.5, 0)
+	brand.Position = UDim2.new(0.5, 0, 0.5, 28)
+	brand.Size = UDim2.fromOffset(120, 16)
+	brand.BackgroundTransparency = 1
+	brand.Font = Enum.Font.Code
+	brand.TextSize = 11
+	brand.Text = "cute.win"
+	brand.TextStrokeTransparency = 0.25
+	brand.TextStrokeColor3 = Color3.new(0, 0, 0)
+	brand.Parent = sg
+
+	local pulse = 0
+	local gap, baseLen = 4, 14
 	RunService.RenderStepped:Connect(function(dt)
-		root.Visible = S.CustomCrosshair == true
-		if not root.Visible then return end
-		root.Rotation = (root.Rotation + (dt or 0.016) * 200) % 360
-		local col = Color3.fromHSV((tick() % 3) / 3, 0.85, 1)
-		stroke.Color = col
-		for _, f in ipairs(fills) do f.BackgroundColor3 = col end
+		local on = S.CustomCrosshair == true
+		root.Visible = on
+		brand.Visible = on
+		if not on then return end
+		pulse = pulse + (dt or 0.016) * 5
+		local expand = 1 + 0.3 * math.sin(pulse)
+		local len = baseLen * expand
+		local thick = 2
+		up.Size = UDim2.fromOffset(thick, len)
+		down.Size = UDim2.fromOffset(thick, len)
+		left.Size = UDim2.fromOffset(len, thick)
+		right.Size = UDim2.fromOffset(len, thick)
+		local off = gap + len * 0.5
+		up.Position = UDim2.new(0.5, 0, 0.5, -off)
+		down.Position = UDim2.new(0.5, 0, 0.5, off)
+		left.Position = UDim2.new(0.5, -off, 0.5, 0)
+		right.Position = UDim2.new(0.5, off, 0.5, 0)
+		root.Rotation = (root.Rotation + (dt or 0.016) * 100) % 360
+		local col = Color3.fromHSV((tick() * 0.25) % 1, 0.9, 1)
+		for _, a in ipairs({ up, down, left, right }) do a.BackgroundColor3 = col end
+		brand.TextColor3 = col
 	end)
 end)
 
