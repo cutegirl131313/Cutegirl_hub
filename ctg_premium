@@ -1837,7 +1837,7 @@ __runS.Heartbeat:Connect(function()
     end
 
     local fireRate = tonumber(getgenv().Config.FireRate) or 0.02
-    if fireRate < 0.015 then fireRate = 0.015 end
+    if fireRate < 0.01 then fireRate = 0.01 end
     if tick() - __lastFire < fireRate then return end
     __lastFire = tick()
 
@@ -3503,55 +3503,75 @@ local function CG_pickHead()
 end
 
 local function CG_encode(from, to, head)
-	if not head then return nil end
+	if not head or typeof(from) ~= "Vector3" or typeof(to) ~= "Vector3" then return nil end
 	CG_refresh()
-	if CG_Util and CG_Util.EncodeCFrame then
-		local ok, data = pcall(function()
-			local e = CG_Util:EncodeCFrame(CFrame.new(from, to))
-			local hit = CG_Util:EncodeCFrame(CFrame.new(0.43, 0.25, 0.42))
-			return {
-				[utf8.char(1)] = {
-					[utf8.char(0)] = e,
-					[utf8.char(1)] = e,
-					[utf8.char(2)] = head,
-					[utf8.char(3)] = hit,
-				},
-			}
-		end)
-		if ok then return data end
-	end
-	return nil
-end
-
-local function CG_oid()
-	CG_refresh()
-	local lf = CG_Fighter and (CG_Fighter.LocalFighter or (CG_Fighter.GetFighter and CG_Fighter:GetFighter(CG_LP)))
-	local item = lf and lf.EquippedItem
-	if not item then return nil, nil end
-	local oid
-	pcall(function() oid = item:Get("ObjectID") end)
-	return oid, item
+	if not (CG_Util and CG_Util.EncodeCFrame) then return nil end
+	local ok, data = pcall(function()
+		local aim = CFrame.lookAt(from, to)
+		local e = CG_Util:EncodeCFrame(aim)
+		local hit = CG_Util:EncodeCFrame(CFrame.new(0.43, 0.25, 0.42))
+		return {
+			[utf8.char(1)] = {
+				[utf8.char(0)] = e,
+				[utf8.char(1)] = e,
+				[utf8.char(2)] = head,
+				[utf8.char(3)] = hit,
+			},
+		}
+	end)
+	return ok and data or nil
 end
 
 local function CG_fire(head, mode)
-	if not head then return end
+	if not head or not head.Parent then return false end
 	CG_refresh()
-	if not CG_UseItem or not CG_SS then return end
-	local oid = CG_oid()
-	if not oid then return end
+	if not CG_UseItem or not CG_SS then return false end
+	local oid = select(1, CG_oid())
+	if not oid then
+		-- try equip first
+		pcall(function()
+			local lf = CG_Fighter and (CG_Fighter.LocalFighter or (CG_Fighter.GetFighter and CG_Fighter:GetFighter(CG_LP)))
+			if lf and lf.EquipItem then lf:EquipItem(1) end
+		end)
+		oid = select(1, CG_oid())
+	end
+	if not oid then return false end
 	local cam = workspace.CurrentCamera
+	local root = CG_LP.Character and CG_LP.Character:FindFirstChild("HumanoidRootPart")
 	local hp = head.Position
-	local from = (mode == "target") and (hp + Vector3.new(0, 0.1, 0)) or ((cam and cam.CFrame.Position) or hp)
+	local from
+	if mode == "target" then
+		from = hp + Vector3.new(0, 0.12, 0)
+	elseif mode == "above" then
+		from = hp + Vector3.new(0, 2.2, 0)
+	elseif mode == "back" then
+		local model = head:FindFirstAncestorOfClass("Model") or head.Parent
+		local th = model and model:FindFirstChild("HumanoidRootPart")
+		from = th and (th.Position - th.CFrame.LookVector * 2.8 + Vector3.new(0, 0.3, 0)) or (hp + Vector3.new(0, 0.2, 0))
+	else
+		from = (cam and cam.CFrame.Position) or (root and root.Position) or hp
+	end
 	local data = CG_encode(from, hp, head)
-	if not data then return end
-	pcall(function() CG_UseItem:FireServer(oid, CG_SS, data, nil) end)
+	if not data then return false end
+	return pcall(function()
+		CG_UseItem:FireServer(oid, CG_SS, data, nil)
+	end)
 end
 
--- Silent only when mode includes Silent AND mouse held
+local function CG_burst(head, n)
+	if not head then return end
+	n = n or 8
+	for i = 1, n do
+		local modes = { "target", "camera", "above", "target", "camera" }
+		CG_fire(head, modes[((i - 1) % #modes) + 1])
+	end
+end
+
+-- Silent: hold fire = multi packet head (Kicia density)
 local lastCGSilent = 0
 CG_Run.Heartbeat:Connect(function()
-	if not CG.KiciaSilent then return end
-	if tick() - lastCGSilent < 0.03 then return end
+	if not CG.KiciaSilent and not silentAimEnabled then return end
+	if tick() - lastCGSilent < 0.02 then return end
 	local shooting = false
 	pcall(function()
 		shooting = CG_UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
@@ -3561,11 +3581,10 @@ CG_Run.Heartbeat:Connect(function()
 	local head = CG_pickHead()
 	if not head then return end
 	lastCGSilent = tick()
-	CG_fire(head, "camera")
-	CG_fire(head, "target")
+	CG_burst(head, 10)
 end)
 
--- namecall rewrite once
+-- namecall rewrite: every real shot becomes headshot data
 pcall(function()
 	if CG_hooked or not hookmetamethod then return end
 	CG_hooked = true
@@ -3575,9 +3594,9 @@ pcall(function()
 	local old
 	old = hookmetamethod(game, "__namecall", wrap(function(self, ...)
 		local method = getnamecallmethod()
-		local args = {...}
+		local args = { ... }
 		if method == "FireServer" and self == useItem then
-			if CG.KiciaSilent then
+			if CG.KiciaSilent or silentAimEnabled then
 				local head = CG_pickHead()
 				if head and type(args[3]) == "table" then
 					local cam = workspace.CurrentCamera
@@ -3592,14 +3611,75 @@ pcall(function()
 	end))
 end)
 
--- Aimbot only when mode includes Aimbot
+-- Aimbot sticky strong
 CG_Run.RenderStepped:Connect(function()
-	if not CG.KiciaAimbot then return end
+	if not CG.KiciaAimbot and not getgenv().AimbotEnabled then return end
 	local head = CG_pickHead()
 	if not head then return end
 	local cam = workspace.CurrentCamera
 	if not cam then return end
-	cam.CFrame = cam.CFrame:Lerp(CFrame.lookAt(cam.CFrame.Position, head.Position), 0.5)
+	local goal = CFrame.lookAt(cam.CFrame.Position, head.Position)
+	cam.CFrame = cam.CFrame:Lerp(goal, 0.85)
+end)
+
+-- Kicia Rage override (also listens MeleeRageBotEnabled)
+local lastCGRage = 0
+CG_Run.Heartbeat:Connect(function()
+	if not getgenv().MeleeRageBotEnabled and not getgenv().KnifeEnabled then return end
+	if tick() - lastCGRage < 0.025 then return end
+	local head = CG_pickHead()
+	if not head then return end
+	lastCGRage = tick()
+
+	-- strip protect
+	pcall(function()
+		local model = head:FindFirstAncestorOfClass("Model") or head.Parent
+		if not model then return end
+		model:SetAttribute("CanTakeDamage", true)
+		model:SetAttribute("Invincible", false)
+		model:SetAttribute("Immunity", false)
+		model:SetAttribute("SpawnProtection", false)
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("ForceField") then d:Destroy() end
+		end
+	end)
+
+	local hrp = CG_LP.Character and CG_LP.Character:FindFirstChild("HumanoidRootPart")
+	local model = head:FindFirstAncestorOfClass("Model") or head.Parent
+	local th = model and model:FindFirstChild("HumanoidRootPart")
+
+	if getgenv().KnifeEnabled and hrp and th then
+		pcall(function()
+			local lf = CG_Fighter and CG_Fighter.LocalFighter
+			if lf then lf:EquipItem(3) end
+		end)
+		local back = th.Position - th.CFrame.LookVector * 2.8 + Vector3.new(0, 0.25, 0)
+		local saved, vel = hrp.CFrame, hrp.AssemblyLinearVelocity
+		hrp.CFrame = CFrame.lookAt(back, th.Position)
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		pcall(function()
+			CG_Run:BindToRenderStep("__kicia_knife", Enum.RenderPriority.Camera.Value - 1, function()
+				if hrp then hrp.CFrame = saved; hrp.AssemblyLinearVelocity = vel end
+				pcall(function() CG_Run:UnbindFromRenderStep("__kicia_knife") end)
+			end)
+		end)
+		CG_burst(head, 12)
+		return
+	end
+
+	if getgenv().MeleeRageBotEnabled and hrp then
+		local above = head.Position + Vector3.new(0, 2.0, 0)
+		local saved, vel = hrp.CFrame, hrp.AssemblyLinearVelocity
+		hrp.CFrame = CFrame.lookAt(above, head.Position)
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		pcall(function()
+			CG_Run:BindToRenderStep("__kicia_rage", Enum.RenderPriority.Camera.Value - 1, function()
+				if hrp then hrp.CFrame = saved; hrp.AssemblyLinearVelocity = vel end
+				pcall(function() CG_Run:UnbindFromRenderStep("__kicia_rage") end)
+			end)
+		end)
+		CG_burst(head, 14)
+	end
 end)
 
 -- Rapid fire
@@ -3950,13 +4030,71 @@ pcall(function()
 		Default = false,
 		Callback = function(v) getgenv().AutoLoadout = v end,
 	})
-	auto:AddDropdown("CG_LoadoutSlot", {
-		Values = { "Primary", "Secondary", "Melee" },
-		Default = "Primary",
+
+	-- weapon list (ItemLibrary + common Rivals names)
+	local function buildWeaponList()
+		local list = { "None" }
+		local seen = { None = true }
+		local function add(n)
+			if type(n) == "string" and n ~= "" and not seen[n] then
+				seen[n] = true
+				table.insert(list, n)
+			end
+		end
+		local fallback = {
+			"Assault Rifle", "Burst Rifle", "Tactical Rifle", "SMG", "Shotgun",
+			"Sniper", "Crossbow", "Revolver", "Pistol", "Handgun", "RPG",
+			"Rocket Launcher", "Grenade Launcher", "Flamethrower", "Minigun",
+			"Energy Rifle", "Bow", "Slingshot", "Knife", "Katana", "Fists",
+			"Melee", "Axe", "Bat", "Chainsword",
+		}
+		for _, n in ipairs(fallback) do add(n) end
+		pcall(function()
+			local RS = game:GetService("ReplicatedStorage")
+			local il = require(RS.Modules:WaitForChild("ItemLibrary", 5))
+			local items = il.Items or il.Weapons or il
+			if type(items) == "table" then
+				for k, v in pairs(items) do
+					if type(k) == "string" then add(k) end
+					if type(v) == "table" and type(v.Name) == "string" then add(v.Name) end
+				end
+			end
+		end)
+		table.sort(list, function(a, b)
+			if a == "None" then return true end
+			if b == "None" then return false end
+			return a:lower() < b:lower()
+		end)
+		return list
+	end
+
+	local weaponList = buildWeaponList()
+	getgenv().LoadoutPrimary = getgenv().LoadoutPrimary or "None"
+	getgenv().LoadoutSecondary = getgenv().LoadoutSecondary or "None"
+	getgenv().LoadoutMelee = getgenv().LoadoutMelee or "None"
+
+	auto:AddDropdown("CG_LoadoutPrimary", {
+		Values = weaponList,
+		Default = "None",
 		Multi = false,
-		Text = "Loadout Slot",
-		Callback = function(v) getgenv().AutoLoadoutSlot = v end,
+		Text = "Primary Weapon",
+		Callback = function(v) getgenv().LoadoutPrimary = v end,
 	})
+	auto:AddDropdown("CG_LoadoutSecondary", {
+		Values = weaponList,
+		Default = "None",
+		Multi = false,
+		Text = "Secondary Weapon",
+		Callback = function(v) getgenv().LoadoutSecondary = v end,
+	})
+	auto:AddDropdown("CG_LoadoutMelee", {
+		Values = weaponList,
+		Default = "None",
+		Multi = false,
+		Text = "Melee Weapon",
+		Callback = function(v) getgenv().LoadoutMelee = v end,
+	})
+
 	auto:AddToggle("CG_UnlockWeapons", {
 		Text = "Unlock All Weapons",
 		Default = false,
@@ -4001,9 +4139,9 @@ pcall(function()
 	})
 end)
 
+-- Anti AFK
 task.spawn(function()
 	local vu = game:GetService("VirtualUser")
-	local lp = game:GetService("Players").LocalPlayer
 	while true do
 		task.wait(25)
 		if getgenv().AntiAFK then
@@ -4015,9 +4153,32 @@ task.spawn(function()
 	end
 end)
 
+-- Auto Loadout: equip chosen weapons by name when possible
+local function tryEquipNamed(lf, weaponName, slotIndex)
+	if not weaponName or weaponName == "None" or not lf then return end
+	pcall(function()
+		-- try inventory search
+		if lf.Items then
+			for _, item in pairs(lf.Items) do
+				local n = item.Name or (item.Get and item:Get("Name"))
+				if n and string.lower(tostring(n)) == string.lower(weaponName) then
+					if item.Equip then
+						item:Equip()
+						return
+					end
+				end
+			end
+		end
+		-- fallback slot
+		if lf.EquipItem then
+			lf:EquipItem(slotIndex)
+		end
+	end)
+end
+
 task.spawn(function()
 	while true do
-		task.wait(0.4)
+		task.wait(0.5)
 		if not getgenv().AutoLoadout then
 			-- skip
 		else
@@ -4026,20 +4187,27 @@ task.spawn(function()
 				local fc = require(lp.PlayerScripts.Controllers.FighterController)
 				local lf = fc.LocalFighter
 				if not lf then return end
-				local slot = getgenv().AutoLoadoutSlot or "Primary"
-				local map = { Primary = 1, Secondary = 2, Melee = 3 }
-				lf:EquipItem(map[slot] or 1)
+				tryEquipNamed(lf, getgenv().LoadoutPrimary, 1)
+				task.wait(0.05)
+				tryEquipNamed(lf, getgenv().LoadoutSecondary, 2)
+				task.wait(0.05)
+				tryEquipNamed(lf, getgenv().LoadoutMelee, 3)
+				-- prefer primary equipped
+				if getgenv().LoadoutPrimary and getgenv().LoadoutPrimary ~= "None" then
+					tryEquipNamed(lf, getgenv().LoadoutPrimary, 1)
+				elseif lf.EquipItem then
+					lf:EquipItem(1)
+				end
 			end)
 		end
 	end
 end)
 
+-- Anti Katana
 task.spawn(function()
 	while true do
 		task.wait(0.2)
-		if not getgenv().AntiKatana then
-			-- skip
-		else
+		if getgenv().AntiKatana then
 			pcall(function()
 				local lp = game:GetService("Players").LocalPlayer
 				local my = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
@@ -4061,28 +4229,31 @@ task.spawn(function()
 	end
 end)
 
-
-
 -- ============================================================
--- EMOTES (dropdown on/off)
+-- EMOTES (Kicia animation IDs)
 -- ============================================================
 getgenv().EmoteSpeed = getgenv().EmoteSpeed or 1
 getgenv().CurrentEmoteTrack = nil
 
 local EMOTES = {
-	["Take the L"] = 10714360343,
+	["Take the L"] = 84744842499780,
 	["Floss"] = 5917459365,
 	["Dolphin Dance"] = 10714347256,
+	["Worm Dance"] = 112024753958948,
+	["Gangnam Style"] = 129764254213842,
+	["Hype Dance"] = 10714369624,
+	["Cha Cha"] = 10714386947,
+	["Ballet Spin"] = 10714293450,
+	["Line Dance"] = 10714383856,
+	["Breakdancing"] = 10214311282,
 	["Orange Justice"] = 3932389329,
 	["Default Dance"] = 3360689775,
 	["Electro Shuffle"] = 3360692915,
-	["Boogie Down"] = 10713981723,
 	["Griddy"] = 13333268152,
 	["T-Pose"] = 3333499508,
 	["Wave"] = 128777973,
 	["Cheer"] = 507770677,
 	["Laugh"] = 507770818,
-	["Point"] = 507770453,
 }
 
 local function stopEmote()
@@ -4101,14 +4272,23 @@ local function playEmote(name)
 	if not id then return end
 	local lp = game:GetService("Players").LocalPlayer
 	local char = lp.Character
-	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not char then return end
+	local hum = char:FindFirstChildOfClass("Humanoid")
 	if not hum then return end
+	-- prefer Animator
+	local animator = hum:FindFirstChildOfClass("Animator")
 	pcall(function()
 		local anim = Instance.new("Animation")
 		anim.AnimationId = "rbxassetid://" .. tostring(id)
-		local track = hum:LoadAnimation(anim)
+		local track
+		if animator then
+			track = animator:LoadAnimation(anim)
+		else
+			track = hum:LoadAnimation(anim)
+		end
+		track.Priority = Enum.AnimationPriority.Action4
 		track.Looped = true
-		track:Play(0.15)
+		track:Play(0.1)
 		track:AdjustSpeed(tonumber(getgenv().EmoteSpeed) or 1)
 		getgenv().CurrentEmoteTrack = track
 	end)
@@ -4116,7 +4296,7 @@ end
 
 pcall(function()
 	if not Tabs then return end
-	local parent = Tabs.Misc or Tabs.Visuals or Tabs.Move
+	local parent = Tabs.Misc or Tabs.Visuals
 	if not parent then return end
 	local g = parent:AddLeftGroupbox("Emotes")
 	local names = { "Off" }
@@ -4162,5 +4342,3 @@ pcall(function()
 end)
 
 print("[CuteGirl] unload+misc ready")
-
-
