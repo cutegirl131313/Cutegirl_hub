@@ -678,21 +678,55 @@ task.spawn(function()
 			_halmu.rageConn = RunService.Heartbeat:Connect(function()
 				if not _halmu.rageEnabled then return end
 				if not _halmu.currentTarget or not _halmu.currentTarget.Parent then return end
-				local targetChar = _halmu.currentTarget:FindFirstAncestorOfClass("Model") or _halmu.currentTarget.Parent
+				local head = _halmu.currentTarget
+				local targetChar = head:FindFirstAncestorOfClass("Model") or head.Parent
 				local targetPlr = Players:GetPlayerFromCharacter(targetChar)
 				if not targetPlr or targetPlr == LP then return end
 				if _isSameTeam(targetPlr) then return end
-				local objId = getObjId()
-				if objId then cachedId = objId else objId = cachedId end
-				if not objId then return end
-				local origin = _halmu.currentTarget.Position + Vector3.new(0, 0.1, 0)
+				-- strip soft invuln
 				pcall(function()
-					_useItemRemote:FireServer(objId, _ssEnum, buildShot(origin, _halmu.currentTarget), nil)
+					if targetChar then
+						targetChar:SetAttribute("CanTakeDamage", true)
+						targetChar:SetAttribute("Invincible", false)
+						targetChar:SetAttribute("SpawnProtection", false)
+						for _, d in ipairs(targetChar:GetDescendants()) do
+							if d:IsA("ForceField") then d:Destroy() end
+						end
+					end
 				end)
+				-- ensure gun
+				local objId = getObjId()
+				if not objId then
+					pcall(function()
+						if _okF and FighterCtrl and FighterCtrl.LocalFighter then
+							FighterCtrl.LocalFighter:EquipItem(1)
+						end
+					end)
+					objId = getObjId()
+				end
+				if objId then cachedId = objId else objId = cachedId end
+				if not objId or not _ssEnum then return end
+				local hp = head.Position
+				local cam = workspace.CurrentCamera
+				local camPos = cam and cam.CFrame.Position or hp
+				local origins = {
+					hp + Vector3.new(0, 0.08, 0),
+					hp + Vector3.new(0, 0.25, 0),
+					hp + Vector3.new(0, 1.4, 0),
+					camPos,
+					camPos + Vector3.new(0, 0.4, 0),
+				}
+				-- dense burst (wins mirror fights)
+				for i = 1, 10 do
+					local origin = origins[((i - 1) % #origins) + 1]
+					pcall(function()
+						_useItemRemote:FireServer(objId, _ssEnum, buildShot(origin, head), nil)
+					end)
+				end
 			end)
 		end
 
-		-- Desync
+		-- Desync (above-head + slight offset so other rages miss body)
 		RunService.Heartbeat:Connect(function()
 			pcall(function()
 				local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
@@ -700,7 +734,11 @@ task.spawn(function()
 					_halmu.RealCFrame = hrp.CFrame
 					_halmu.RealVelocity = hrp.AssemblyLinearVelocity
 					local tp = _halmu.currentTarget.Position
-					hrp.CFrame = CFrame.new(tp + Vector3.new(0, _halmu.desyncDist, 0), tp)
+					local height = math.max(tonumber(_halmu.desyncDist) or 3, 2.5)
+					-- sit above their head + tiny random XZ so mirrored rage snaps less cleanly
+					local jx = (math.random() - 0.5) * 1.2
+					local jz = (math.random() - 0.5) * 1.2
+					hrp.CFrame = CFrame.new(tp + Vector3.new(jx, height, jz), tp)
 					hrp.AssemblyLinearVelocity = Vector3.zero
 				end
 			end)
@@ -719,18 +757,33 @@ task.spawn(function()
 		-- Target finder
 		task.spawn(function()
 			while true do
-				task.wait(0.01)
+				task.wait(0.005)
 				if _halmu.rageEnabled or _halmu.orbitEnabled then
 					local ref = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
 					local refPos = ref and ref.Position or Vector3.zero
-					local closest, best = nil, math.huge
+					local closest, best = nil, -1e9
+					local cam = workspace.CurrentCamera
 					for _, plr in pairs(Players:GetPlayers()) do
 						if plr ~= LP and plr.Character and not _isSameTeam(plr) then
 							local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
-							local hum = plr.Character:FindFirstChild("Humanoid")
+							local hum = plr.Character:FindFirstChildOfClass("Humanoid")
 							if hrp and hum and hum.Health > 0 then
-								local d = (Vector3.new(refPos.X,0,refPos.Z) - Vector3.new(hrp.Position.X,0,hrp.Position.Z)).Magnitude
-								if d < best then best = d closest = plr end
+								local head = _getRageHead(plr.Character)
+								if head then
+									local worldD = (refPos - hrp.Position).Magnitude
+									local screenBonus = 0
+									if cam then
+										local sp, on = cam:WorldToViewportPoint(head.Position)
+										if on and sp.Z > 0 then
+											local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
+											local sd = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+											screenBonus = math.max(0, 900 - sd)
+										end
+									end
+									-- prefer low HP (finish fights), near, on-screen
+									local score = screenBonus - worldD * 0.35 - (hum.Health * 0.15)
+									if score > best then best = score closest = plr end
+								end
 							end
 						end
 					end
