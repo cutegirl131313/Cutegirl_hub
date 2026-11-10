@@ -2448,38 +2448,81 @@ task.spawn(function()
 	local LP = Players.LocalPlayer
 	local CoreGui = game:GetService("CoreGui")
 
-	-- Watermark
+	-- Watermark (clean)
+	pcall(function()
+		local oldWm = CoreGui:FindFirstChild("CG_Watermark")
+		if oldWm then oldWm:Destroy() end
+	end)
 	local wm = Instance.new("ScreenGui")
 	wm.Name = "CG_Watermark"
 	wm.ResetOnSpawn = false
 	wm.IgnoreGuiInset = true
+	wm.DisplayOrder = 100
 	wm.Parent = CoreGui
+
 	local box = Instance.new("Frame")
-	box.Size = UDim2.fromOffset(180, 28)
-	box.Position = UDim2.new(0, 12, 0, 60)
-	box.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
-	box.BackgroundTransparency = 0.2
-	box.BorderSizePixel = 1
-	box.BorderColor3 = Color3.fromRGB(255, 100, 160)
+	box.Name = "Box"
+	box.AutomaticSize = Enum.AutomaticSize.X
+	box.Size = UDim2.fromOffset(0, 22)
+	box.Position = UDim2.new(0, 14, 0, 72)
+	box.BackgroundColor3 = Color3.fromRGB(8, 8, 10)
+	box.BackgroundTransparency = 0.15
+	box.BorderSizePixel = 0
 	box.Parent = wm
-	local wlab = Instance.new("TextLabel")
-	wlab.Size = UDim2.fromScale(1, 1)
-	wlab.BackgroundTransparency = 1
-	wlab.Font = Enum.Font.Code
-	wlab.TextSize = 13
-	wlab.TextColor3 = Color3.fromRGB(255, 200, 230)
-	wlab.Text = "Cutegirl_hub | premium"
-	wlab.Parent = box
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 1
+	stroke.Color = Color3.fromRGB(40, 40, 48)
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = box
+
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, 8)
+	pad.PaddingRight = UDim.new(0, 8)
+	pad.Parent = box
+
+	local row = Instance.new("UIListLayout")
+	row.FillDirection = Enum.FillDirection.Horizontal
+	row.VerticalAlignment = Enum.VerticalAlignment.Center
+	row.SortOrder = Enum.SortOrder.LayoutOrder
+	row.Padding = UDim.new(0, 6)
+	row.Parent = box
+
+	local function mk(text, color, order)
+		local l = Instance.new("TextLabel")
+		l.BackgroundTransparency = 1
+		l.AutomaticSize = Enum.AutomaticSize.X
+		l.Size = UDim2.fromOffset(0, 22)
+		l.Font = Enum.Font.Code
+		l.TextSize = 12
+		l.TextXAlignment = Enum.TextXAlignment.Left
+		l.TextColor3 = color
+		l.Text = text
+		l.LayoutOrder = order
+		l.Parent = box
+		return l
+	end
+
+	local userName = (LP and (LP.DisplayName or LP.Name)) or "player"
+	local nameL = mk("Cutegirl_hub", Color3.fromRGB(230, 230, 235), 1)
+	local sep0 = mk("|", Color3.fromRGB(70, 70, 80), 2)
+	local userL = mk(userName, Color3.fromRGB(200, 200, 210), 3)
+	local sep1 = mk("|", Color3.fromRGB(70, 70, 80), 4)
+	local fpsL = mk("0 fps", Color3.fromRGB(180, 180, 190), 5)
+	local sep2 = mk("|", Color3.fromRGB(70, 70, 80), 6)
+	local verL = mk("premium", Color3.fromRGB(255, 120, 170), 7)
+
 	local fps, frames, t0 = 0, 0, tick()
 	RunService.RenderStepped:Connect(function()
 		frames += 1
-		if tick() - t0 >= 0.5 then
-			fps = math.floor(frames / (tick() - t0))
+		if tick() - t0 >= 0.4 then
+			fps = math.floor(frames / (tick() - t0) + 0.5)
 			frames = 0
 			t0 = tick()
+			fpsL.Text = tostring(fps) .. " fps"
+			userL.Text = (LP and (LP.DisplayName or LP.Name)) or "player"
 		end
 		wm.Enabled = S.Watermark ~= false
-		wlab.Text = string.format("Cutegirl_hub | %dfps", fps)
 	end)
 
 	-- Snaplines
