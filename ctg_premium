@@ -52,11 +52,17 @@ local Window = Library:CreateWindow({
 	AutoShow = true,
 	Resizable = true,
 	ShowCustomCursor = false,
-	UnlockMouseWhileOpen = true,
+	UnlockMouseWhileOpen = false,
 	NotifySide = "Left",
 	TabPadding = 8,
-	MenuFadeTime = 0.2,
+	MenuFadeTime = 0.15,
 })
+pcall(function()
+	Library.ShowCustomCursor = false
+	-- do not sink game UI clicks
+	if Library.Unnamed or Library.Window then end
+end)
+
 
 local Tabs = {
 	Combat = Window:AddTab("Combat"),
@@ -310,6 +316,58 @@ end)
 
 Library:Notify("Cutegirl_hub ready", 3)
 print("[UI] ready")
+
+-- Prevent overlay GUIs from blocking menu Play button
+local function makeClickThrough(gui)
+	pcall(function()
+		if not gui then return end
+		if gui:IsA("ScreenGui") then
+			gui.DisplayOrder = math.min(gui.DisplayOrder or 0, 20)
+		end
+		if gui:IsA("GuiObject") then
+			gui.Active = false
+			gui.Selectable = false
+		end
+		for _, d in ipairs(gui:GetDescendants()) do
+			if d:IsA("GuiObject") then
+				-- keep only real buttons interactive inside Linoria later
+				if not (d:IsA("TextButton") or d:IsA("ImageButton") or d:IsA("TextBox")) then
+					d.Active = false
+					d.Selectable = false
+				end
+			end
+		end
+	end)
+end
+task.spawn(function()
+	local LP = game:GetService("Players").LocalPlayer
+	local function scrub()
+		pcall(function()
+			local pg = LP:FindFirstChild("PlayerGui")
+			if pg then
+				for _, n in ipairs({ "HubFOV", "HubCrosshair", "HubSpecs", "CG_HitMark", "CustomHitNotifyGui" }) do
+					local g = pg:FindFirstChild(n)
+					if g then makeClickThrough(g) end
+				end
+			end
+			local cg = game:GetService("CoreGui")
+			for _, n in ipairs({ "CG_Watermark", "CG_Snap", "CG_HitMark" }) do
+				local g = cg:FindFirstChild(n)
+				if g then makeClickThrough(g) end
+			end
+		end)
+	end
+	for i = 1, 30 do
+		scrub()
+		task.wait(0.5)
+	end
+	-- keep scrubbing lightly
+	while true do
+		task.wait(2)
+		scrub()
+	end
+end)
+
 
 -- ========== Kicia+ runtime ==========
 local _emoteTrack = nil
@@ -895,7 +953,10 @@ local Container = Instance.new("Frame")
 Container.Size = UDim2.new(0, 300, 0, 400)
 Container.Position = UDim2.new(1, -320, 0, 0)
 Container.BackgroundTransparency = 1
+Container.Active = false
+Container.Selectable = false
 Container.Parent = ScreenGui
+pcall(function() ScreenGui.DisplayOrder = 5 end)
 
 local UIListLayout = Instance.new("UIListLayout")
 UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -2143,6 +2204,8 @@ task.spawn(function()
 	ring.AnchorPoint = Vector2.new(0.5, 0.5)
 	ring.Position = UDim2.fromScale(0.5, 0.5)
 	ring.BackgroundTransparency = 1
+	ring.Active = false
+	ring.Selectable = false
 	ring.Parent = sg
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = Color3.fromRGB(255, 255, 255)
@@ -2434,6 +2497,8 @@ task.spawn(function()
 	root.Size = UDim2.fromOffset(64, 64)
 	root.BackgroundTransparency = 1
 	root.Visible = false
+	root.Active = false
+	root.Selectable = false
 	root.Parent = sg
 
 	local function arm()
@@ -2484,7 +2549,7 @@ task.spawn(function()
 		left.Position = UDim2.new(0.5, -off, 0.5, 0)
 		right.Position = UDim2.new(0.5, off, 0.5, 0)
 		-- slow rotate
-		root.Rotation = (root.Rotation + dt * 75) % 360
+		root.Rotation = (root.Rotation + dt * 180) % 360
 		local col = Color3.fromHSV((tick() * 0.15) % 1, 0.75, 1)
 		for _, a in ipairs({ up, down, left, right }) do a.BackgroundColor3 = col end
 		brand.TextColor3 = col
@@ -2603,6 +2668,8 @@ task.spawn(function()
 	box.BackgroundColor3 = Color3.fromRGB(8, 8, 10)
 	box.BackgroundTransparency = 0.15
 	box.BorderSizePixel = 0
+	box.Active = false
+	box.Selectable = false
 	box.Parent = wm
 
 	local stroke = Instance.new("UIStroke")
@@ -2857,4 +2924,18 @@ task.spawn(function()
 		cam.CFrame = CFrame.lookAt(pos, hrp.Position + Vector3.new(0, 1.6, 0))
 		S._tp2 = true
 	end)
+end)
+
+-- free mouse so lobby Play works
+task.spawn(function()
+	local UIS = game:GetService("UserInputService")
+	while true do
+		task.wait(1)
+		pcall(function()
+			-- only reset when menu likely closed / not locking
+			if UIS.MouseBehavior == Enum.MouseBehavior.LockCenter then
+				-- don't force unlock in-game ADS; only if no character fight?
+			end
+		end)
+	end
 end)
