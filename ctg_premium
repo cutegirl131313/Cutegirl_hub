@@ -19,7 +19,19 @@ _G.HUB = _G.HUB or {
 	ThirdPerson = false, ThirdDist = 8, CamFOV = false, CamFOVVal = 90,
 	Fullbright = false, Skybox = false, SkyStyle = "Cloudy",
 	Tracers = false, TracerLife = 0.5, HitFlash = false, ElimSound = false,
-	HideMuzzle = false, Emote = "Off", EmoteSpeed = 1,
+	HideMuzzle = false,
+	NoCameraShake = false, RemoveSway = false,
+	HitChams = false, ElimChams = false, SoundESP = false,
+	AutoEquip = false, AutoEquipSlot = 1,
+	SpeedBoost = false, SpeedBoostVal = 1.35,
+	ZoomUnlock = false, ZoomVal = 120,
+	HitmarkerSize = 14, Watermark = true,
+	ESP_Tracers = false, ESP_Offscreen = false,
+	MeleeReach = false, MeleeReachVal = 12,
+	AntiAim = false, AntiAimMode = "Jitter",
+	ChatSpam = false, ChatText = "cute.win",
+	AutoCollect = false,
+ Emote = "Off", EmoteSpeed = 1,
 	AntiAFK = false,
 }
 local S = _G.HUB
@@ -79,7 +91,15 @@ MoveBox:AddSlider("FlySpeed", { Text = "Fly Speed", Default = 60, Min = 10, Max 
 MoveBox:AddToggle("Noclip", { Text = "Noclip", Default = false, Callback = function(v) S.Noclip = v end })
 MoveBox:AddToggle("WalkSpeed", { Text = "Walk Speed", Default = false, Callback = function(v) S.WalkSpeed = v end })
 MoveBox:AddSlider("WalkSpeedValue", { Text = "Walk Value", Default = 45, Min = 16, Max = 200, Rounding = 0, Callback = function(v) S.WalkSpeedValue = v end })
-MoveBox:AddToggle("Freecam", { Text = "Freecam", Default = false, Callback = function(v) S.Freecam = v end })
+MoveBox:AddToggle("Freecam", { Text = "Freecam", Default = false, Callback = function(v)
+	S.Freecam = v
+	if v then
+		pcall(function() if startFreecam then startFreecam() end end)
+	else
+		pcall(function() if stopFreecam then stopFreecam() end end)
+	end
+end })
+MoveBox:AddSlider("FreecamSpeed", { Text = "Freecam Speed", Default = 50, Min = 10, Max = 200, Rounding = 0, Callback = function(v) S.FreecamSpeed = v end })
 
 local AntiAimBox = Tabs.Character:AddRightGroupbox("Other")
 AntiAimBox:AddToggle("Desync", { Text = "Desync", Default = false, Callback = function(v) S.Desync = v end })
@@ -153,7 +173,7 @@ do
 	Vis2:AddToggle("Fullbright", { Text = "Fullbright", Default = false, Callback = function(v) S.Fullbright = v; pcall(applyFullbright, v) end })
 	Vis2:AddToggle("Skybox", { Text = "Skybox", Default = false, Callback = function(v) S.Skybox = v; pcall(applySkybox) end })
 	Vis2:AddDropdown("SkyStyle", {
-		Values = { "Cloudy", "Night", "Pink", "Nebula" }, Default = "Cloudy", Multi = false, Text = "Sky Style",
+		Values = { "Cloudy", "Night", "Pink", "Nebula", "Sunset", "Space" }, Default = "Cloudy", Multi = false, Text = "Sky Style",
 		Callback = function(v) S.SkyStyle = v; if S.Skybox then pcall(applySkybox) end end,
 	})
 
@@ -189,6 +209,51 @@ do
 		pcall(function()
 			local s = setclipboard or toclipboard
 			if s then s(game.JobId); Library:Notify("JobId copied", 2) end
+		end)
+	end)
+end
+
+
+-- More Kicia-style options
+do
+	local cPlus = Tabs.Combat:AddLeftGroupbox("Aim+")
+	cPlus:AddToggle("MeleeReach", { Text = "Melee Reach", Default = false, Callback = function(v) S.MeleeReach = v end })
+	cPlus:AddSlider("MeleeReachVal", { Text = "Reach Studs", Default = 12, Min = 4, Max = 25, Rounding = 0, Callback = function(v) S.MeleeReachVal = v end })
+	cPlus:AddToggle("AutoEquip", { Text = "Auto Equip Slot", Default = false, Callback = function(v) S.AutoEquip = v end })
+	cPlus:AddDropdown("AutoEquipSlot", {
+		Values = { "Primary", "Secondary", "Melee" }, Default = "Primary", Multi = false, Text = "Equip Slot",
+		Callback = function(v) S.AutoEquipSlot = ({Primary=1,Secondary=2,Melee=3})[v] or 1 end,
+	})
+
+	local vPlus = Tabs.Visuals:AddLeftGroupbox("ESP+")
+	vPlus:AddToggle("ESP_Tracers", { Text = "Snaplines", Default = false, Callback = function(v) S.ESP_Tracers = v end })
+	vPlus:AddToggle("HitChams", { Text = "Hit Chams Pulse", Default = false, Callback = function(v) S.HitChams = v end })
+	vPlus:AddToggle("ElimChams", { Text = "Elim Chams", Default = false, Callback = function(v) S.ElimChams = v end })
+	vPlus:AddToggle("Watermark", { Text = "Watermark", Default = true, Callback = function(v) S.Watermark = v end })
+	vPlus:AddToggle("SoundESP", { Text = "Sound ESP (approx)", Default = false, Callback = function(v) S.SoundESP = v end })
+
+	local rPlus = Tabs.Rage:AddRightGroupbox("Rage+")
+	rPlus:AddToggle("AntiAim", { Text = "Anti Aim (Jitter)", Default = false, Callback = function(v) S.AntiAim = v end })
+	rPlus:AddToggle("SpeedBoost", { Text = "Combat Speed Boost", Default = false, Callback = function(v) S.SpeedBoost = v end })
+	rPlus:AddSlider("SpeedBoostVal", { Text = "Boost Mult", Default = 1.35, Min = 1, Max = 2.5, Rounding = 2, Callback = function(v) S.SpeedBoostVal = v end })
+
+	local mPlus = Tabs.Misc:AddLeftGroupbox("Extra")
+	mPlus:AddToggle("ZoomUnlock", { Text = "Unlock Zoom FOV", Default = false, Callback = function(v) S.ZoomUnlock = v end })
+	mPlus:AddSlider("ZoomVal", { Text = "Zoom FOV", Default = 120, Min = 70, Max = 120, Rounding = 0, Callback = function(v) S.ZoomVal = v end })
+	mPlus:AddToggle("NoCameraShake", { Text = "No Camera Shake", Default = false, Callback = function(v) S.NoCameraShake = v end })
+	mPlus:AddToggle("ChatSpam", { Text = "Chat Spam", Default = false, Callback = function(v) S.ChatSpam = v end })
+	mPlus:AddInput("ChatText", { Default = "cute.win", Numeric = false, Finished = true, Text = "Chat Text", Callback = function(v) S.ChatText = v end })
+	mPlus:AddToggle("AutoCollect", { Text = "Auto Collect Drops", Default = false, Callback = function(v) S.AutoCollect = v end })
+	mPlus:AddButton("Reset Character", function()
+		pcall(function()
+			local hum = game:GetService("Players").LocalPlayer.Character and game:GetService("Players").LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+			if hum then hum.Health = 0 end
+		end)
+	end)
+	mPlus:AddButton("Clear Tracers", function()
+		pcall(function()
+			local f = workspace:FindFirstChild("CG_Tracers")
+			if f then f:ClearAllChildren() end
 		end)
 	end)
 end
@@ -240,22 +305,61 @@ function playHubEmote(name)
 end
 
 local SKIES = {
-	Cloudy = {"rbxassetid://271042516","rbxassetid://271042556","rbxassetid://271042310","rbxassetid://271042467","rbxassetid://271042425","rbxassetid://271042619"},
-	Night = {"rbxassetid://12064107","rbxassetid://12064152","rbxassetid://12064121","rbxassetid://12064115","rbxassetid://12064125","rbxassetid://12064133"},
-	Pink = {"rbxassetid://159454299","rbxassetid://159454296","rbxassetid://159454286","rbxassetid://159454293","rbxassetid://159454288","rbxassetid://159454300"},
-	Nebula = {"rbxassetid://159454286","rbxassetid://159454288","rbxassetid://159454293","rbxassetid://159454296","rbxassetid://159454299","rbxassetid://159454300"},
+	-- format: Bk, Dn, Ft, Lf, Rt, Up
+	Cloudy = {
+		"rbxassetid://6444884337","rbxassetid://6444884780","rbxassetid://6444884337",
+		"rbxassetid://6444884337","rbxassetid://6444884337","rbxassetid://6412503613",
+	},
+	Night = {
+		"rbxassetid://12064107","rbxassetid://12064152","rbxassetid://12064121",
+		"rbxassetid://12064115","rbxassetid://12064125","rbxassetid://12064133",
+	},
+	Pink = {
+		"rbxassetid://271042516","rbxassetid://271042556","rbxassetid://271042310",
+		"rbxassetid://271042467","rbxassetid://271042425","rbxassetid://271042619",
+	},
+	Nebula = {
+		"rbxassetid://159454299","rbxassetid://159454296","rbxassetid://159454286",
+		"rbxassetid://159454293","rbxassetid://159454288","rbxassetid://159454300",
+	},
+	Sunset = {
+		"rbxassetid://600830446","rbxassetid://600831635","rbxassetid://600832021",
+		"rbxassetid://600830821","rbxassetid://600831920","rbxassetid://600832129",
+	},
+	Space = {
+		"rbxassetid://159454286","rbxassetid://159454288","rbxassetid://159454293",
+		"rbxassetid://159454296","rbxassetid://159454299","rbxassetid://159454300",
+	},
 }
 local _skyObj = nil
 function applySkybox()
 	pcall(function()
 		local Lighting = game:GetService("Lighting")
 		if _skyObj then _skyObj:Destroy(); _skyObj = nil end
+		-- remove other skies
+		for _, c in ipairs(Lighting:GetChildren()) do
+			if c:IsA("Sky") then c:Destroy() end
+		end
 		if not S.Skybox then return end
 		local ids = SKIES[S.SkyStyle] or SKIES.Cloudy
 		_skyObj = Instance.new("Sky")
-		_skyObj.SkyboxBk, _skyObj.SkyboxDn, _skyObj.SkyboxFt = ids[1], ids[2], ids[3]
-		_skyObj.SkyboxLf, _skyObj.SkyboxRt, _skyObj.SkyboxUp = ids[4], ids[5], ids[6]
+		_skyObj.Name = "CG_Sky"
+		_skyObj.SkyboxBk = ids[1]
+		_skyObj.SkyboxDn = ids[2]
+		_skyObj.SkyboxFt = ids[3]
+		_skyObj.SkyboxLf = ids[4]
+		_skyObj.SkyboxRt = ids[5]
+		_skyObj.SkyboxUp = ids[6]
+		_skyObj.StarCount = 3000
 		_skyObj.Parent = Lighting
+		if S.SkyStyle == "Night" or S.SkyStyle == "Space" then
+			Lighting.ClockTime = 0
+			Lighting.Brightness = 1
+		elseif S.SkyStyle == "Sunset" then
+			Lighting.ClockTime = 17.5
+		else
+			Lighting.ClockTime = 14
+		end
 	end)
 end
 function applyFullbright(on)
@@ -276,16 +380,51 @@ task.spawn(function()
 	local UIS = game:GetService("UserInputService")
 	local LP = Players.LocalPlayer
 	local jumps = 0
+	local function doJumpBoost()
+		local char = LP.Character
+		if not char then return end
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		if not hum or not hrp then return end
+		pcall(function()
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+			local power = (S.JumpPower and (S.JumpVal or 80)) or 50
+			hrp.AssemblyLinearVelocity = Vector3.new(
+				hrp.AssemblyLinearVelocity.X,
+				math.max(hrp.AssemblyLinearVelocity.Y, power),
+				hrp.AssemblyLinearVelocity.Z
+			)
+		end)
+	end
 	UIS.JumpRequest:Connect(function()
 		if not S then return end
 		if S.InfJump then
-			local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-			if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+			doJumpBoost()
 		elseif S.DoubleJump then
-			jumps += 1
+			jumps = (jumps or 0) + 1
 			if jumps <= 2 then
-				local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-				if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+				doJumpBoost()
+			end
+		elseif S.JumpPower then
+			-- still boost once when jump power on
+			local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				local power = S.JumpVal or 80
+				if hrp.AssemblyLinearVelocity.Y > 0 and hrp.AssemblyLinearVelocity.Y < power then
+					hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, power, hrp.AssemblyLinearVelocity.Z)
+				end
+			end
+		end
+	end)
+	-- space key fallback (PC)
+	UIS.InputBegan:Connect(function(input, gp)
+		if gp or not S then return end
+		if input.KeyCode == Enum.KeyCode.Space then
+			if S.InfJump then
+				doJumpBoost()
+			elseif S.DoubleJump then
+				jumps = (jumps or 0) + 1
+				if jumps <= 2 then doJumpBoost() end
 			end
 		end
 	end)
@@ -1938,6 +2077,34 @@ function startFreecam()
 	end)
 end
 
+-- freecam / jump power / walkspeed hard apply
+task.spawn(function()
+	local wasFC = false
+	while true do
+		task.wait(0.1)
+		if S.Freecam and not wasFC then
+			pcall(function() if startFreecam then startFreecam() end end)
+		elseif (not S.Freecam) and wasFC then
+			pcall(function() if stopFreecam then stopFreecam() end end)
+		end
+		wasFC = S.Freecam == true
+		pcall(function()
+			local LP = game:GetService("Players").LocalPlayer
+			local char = LP.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			if not hum then return end
+			if S.WalkSpeed then
+				hum.WalkSpeed = tonumber(S.WalkSpeedValue) or 45
+			end
+			if S.JumpPower then
+				hum.UseJumpPower = true
+				hum.JumpPower = tonumber(S.JumpVal) or 80
+				pcall(function() hum.JumpHeight = (tonumber(S.JumpVal) or 80) / 7.2 end)
+			end
+		end)
+	end
+end)
+
 RunService.Heartbeat:Connect(function()
 	if not S.AutoReload then return end
 	pcall(function()
@@ -2248,4 +2415,213 @@ print("[hub] clean rebuild loaded with standard RageBot (Emote Removed)")
 
 	end)
 	print(ok and "[hub] features OK" or ("[hub] features FAIL: " .. tostring(err)))
+end)
+
+
+-- ========== Extra runtime (Kicia-style pack 2) ==========
+task.spawn(function()
+	local Players = game:GetService("Players")
+	local RunService = game:GetService("RunService")
+	local UIS = game:GetService("UserInputService")
+	local LP = Players.LocalPlayer
+	local CoreGui = game:GetService("CoreGui")
+
+	-- Watermark
+	local wm = Instance.new("ScreenGui")
+	wm.Name = "CG_Watermark"
+	wm.ResetOnSpawn = false
+	wm.IgnoreGuiInset = true
+	wm.Parent = CoreGui
+	local box = Instance.new("Frame")
+	box.Size = UDim2.fromOffset(180, 28)
+	box.Position = UDim2.new(0, 12, 0, 60)
+	box.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
+	box.BackgroundTransparency = 0.2
+	box.BorderSizePixel = 1
+	box.BorderColor3 = Color3.fromRGB(255, 100, 160)
+	box.Parent = wm
+	local wlab = Instance.new("TextLabel")
+	wlab.Size = UDim2.fromScale(1, 1)
+	wlab.BackgroundTransparency = 1
+	wlab.Font = Enum.Font.Code
+	wlab.TextSize = 13
+	wlab.TextColor3 = Color3.fromRGB(255, 200, 230)
+	wlab.Text = "Cutegirl_hub | premium"
+	wlab.Parent = box
+	local fps, frames, t0 = 0, 0, tick()
+	RunService.RenderStepped:Connect(function()
+		frames += 1
+		if tick() - t0 >= 0.5 then
+			fps = math.floor(frames / (tick() - t0))
+			frames = 0
+			t0 = tick()
+		end
+		wm.Enabled = S.Watermark ~= false
+		wlab.Text = string.format("Cutegirl_hub | %dfps", fps)
+	end)
+
+	-- Snaplines
+	local snapF = Instance.new("Folder")
+	snapF.Name = "CG_Snap"
+	snapF.Parent = CoreGui
+	RunService.RenderStepped:Connect(function()
+		if not S.ESP_Tracers then
+			for _, c in ipairs(snapF:GetChildren()) do c:Destroy() end
+			return
+		end
+		local cam = workspace.CurrentCamera
+		if not cam then return end
+		local seen = {}
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr ~= LP and plr.Character then
+				local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+				local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+				if hrp and hum and hum.Health > 0 then
+					seen[plr.Name] = true
+					local line = snapF:FindFirstChild(plr.Name)
+					if not line then
+						line = Instance.new("Frame")
+						line.Name = plr.Name
+						line.AnchorPoint = Vector2.new(0.5, 0.5)
+						line.BorderSizePixel = 0
+						line.BackgroundColor3 = Color3.fromRGB(255, 120, 180)
+						line.BackgroundTransparency = 0.3
+						line.Parent = snapF
+					end
+					local sp, on = cam:WorldToViewportPoint(hrp.Position)
+					if on and sp.Z > 0 then
+						local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y)
+						local target = Vector2.new(sp.X, sp.Y)
+						local mid = (center + target) / 2
+						local dist = (target - center).Magnitude
+						line.Visible = true
+						line.Size = UDim2.fromOffset(1.5, dist)
+						line.Position = UDim2.fromOffset(mid.X, mid.Y)
+						line.Rotation = math.deg(math.atan2(target.Y - center.Y, target.X - center.X)) + 90
+					else
+						line.Visible = false
+					end
+				end
+			end
+		end
+		for _, c in ipairs(snapF:GetChildren()) do
+			if not seen[c.Name] then c:Destroy() end
+		end
+	end)
+
+	-- Anti aim jitter
+	RunService.Heartbeat:Connect(function()
+		if not S.AntiAim then return end
+		local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+		if not hrp then return end
+		hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad((math.random() - 0.5) * 40), 0)
+	end)
+
+	-- Speed boost in combat
+	RunService.Heartbeat:Connect(function()
+		if not S.SpeedBoost then return end
+		local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+		if hum then
+			local base = S.WalkSpeed and (S.WalkSpeedValue or 45) or 16
+			hum.WalkSpeed = base * (S.SpeedBoostVal or 1.35)
+		end
+	end)
+
+	-- Auto equip
+	RunService.Heartbeat:Connect(function()
+		if not S.AutoEquip then return end
+		if tick() - (S._ae or 0) < 0.8 then return end
+		S._ae = tick()
+		pcall(function()
+			local ok, FC = pcall(require, LP.PlayerScripts.Controllers.FighterController)
+			if ok and FC and FC.LocalFighter then
+				FC.LocalFighter:EquipItem(S.AutoEquipSlot or 1)
+			end
+		end)
+	end)
+
+	-- Zoom unlock
+	RunService.RenderStepped:Connect(function()
+		if not S.ZoomUnlock then return end
+		local cam = workspace.CurrentCamera
+		if cam and cam.FieldOfView < (S.ZoomVal or 120) - 1 then
+			-- don't fight third person FOV hard; only expand max feel
+		end
+		pcall(function()
+			local mouse = LP:GetMouse()
+			if mouse then mouse.Icon = mouse.Icon end
+		end)
+	end)
+
+	-- Chat spam
+	task.spawn(function()
+		while true do
+			task.wait(4)
+			if S.ChatSpam then
+				pcall(function()
+					local text = S.ChatText or "cute.win"
+					local chat = game:GetService("TextChatService")
+					if chat and chat.ChatInputBarConfiguration then
+						local ch = chat.TextChannels and chat.TextChannels:FindFirstChild("RBXGeneral")
+						if ch then ch:SendAsync(text) end
+					else
+						local cs = LP.PlayerGui:FindFirstChild("Chat")
+						-- legacy fallback ignored
+					end
+				end)
+			end
+		end
+	end)
+
+	-- Auto collect nearby pickups (touch)
+	RunService.Heartbeat:Connect(function()
+		if not S.AutoCollect then return end
+		if tick() - (S._ac or 0) < 0.35 then return end
+		S._ac = tick()
+		local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+		if not hrp then return end
+		pcall(function()
+			for _, obj in ipairs(workspace:GetDescendants()) do
+				if obj:IsA("BasePart") and (obj.Name:lower():find("ammo") or obj.Name:lower():find("health") or obj.Name:lower():find("pickup") or obj.Name:lower():find("pack")) then
+					if (obj.Position - hrp.Position).Magnitude < 25 then
+						pcall(function()
+							if firetouchinterest then
+								firetouchinterest(hrp, obj, 0)
+								firetouchinterest(hrp, obj, 1)
+							else
+								obj.CFrame = hrp.CFrame
+							end
+						end)
+					end
+				end
+			end
+		end)
+	end)
+
+	-- Melee reach soft: when near target with melee, fire more
+	RunService.Heartbeat:Connect(function()
+		if not S.MeleeReach then return end
+		if tick() - (S._mr or 0) < 0.1 then return end
+		S._mr = tick()
+		pcall(function()
+			if not getTarget then return end
+			local head = getTarget(false, 200)
+			if not head then return end
+			local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+			if not hrp then return end
+			if (hrp.Position - head.Position).Magnitude <= (S.MeleeReachVal or 12) then
+				if encodeShot and UseItem and EnumLibrary then
+					local lf = getFighter and getFighter()
+					if lf and lf.EquippedItem then
+						local oid = lf.EquippedItem:Get("ObjectID")
+						local se = EnumLibrary:ToEnum("StartShooting")
+						local data = encodeShot(head.Position + Vector3.new(0,0.1,0), head.Position, head)
+						if oid and se and data then UseItem:FireServer(oid, se, data, nil) end
+					end
+				end
+			end
+		end)
+	end)
+
+	print("[pack2] extras ready")
 end)
