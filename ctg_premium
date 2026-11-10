@@ -488,15 +488,22 @@ task.spawn(function()
 		local cam = workspace.CurrentCamera
 		if not cam then return end
 		if S.ThirdPerson then
-			local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+			local char = LP.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
 			if hrp then
 				cam.CameraType = Enum.CameraType.Scriptable
-				local pos = (hrp.CFrame * CFrame.new(0, 2.2, S.ThirdDist or 8)).Position
-				cam.CFrame = CFrame.lookAt(pos, hrp.Position + Vector3.new(0, 1.4, 0))
+				cam.CameraSubject = hum
+				local dist = tonumber(S.ThirdDist) or 8
+				local look = hrp.CFrame.LookVector
+				local pos = hrp.Position - look * dist + Vector3.new(0, 2.5, 0)
+				cam.CFrame = CFrame.lookAt(pos, hrp.Position + Vector3.new(0, 1.5, 0))
 				S._tp = true
 			end
 		elseif S._tp then
 			cam.CameraType = Enum.CameraType.Custom
+			local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+			if hum then cam.CameraSubject = hum end
 			S._tp = false
 		end
 		if S.CamFOV then cam.FieldOfView = S.CamFOVVal or 90 end
@@ -1314,49 +1321,64 @@ RunService:BindToRenderStep("hub_aimbot", Enum.RenderPriority.Camera.Value + 1, 
 end)
 
 local lastSilent = 0
-RunService.Heartbeat:Connect(function()
-	if not S.SilentAim then return end
-	local holding = false
-	pcall(function()
-		holding = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
-			or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
-	end)
-	if not holding then return end
-	if tick() - lastSilent < 0.04 then return end
-	lastSilent = tick()
-	local head = getTarget(false, S.AimFOV or 400)
-	if not head then
-		head = getCrosshair(S.AimFOV or 400)
-	end
-	if not head then return end
-	-- prefer HitboxHead
-	local model = head:FindFirstAncestorOfClass("Model") or head.Parent
-	if model then
-		local h = model:FindFirstChild("HitboxHead") or model:FindFirstChild("HitboxHeadSmall") or model:FindFirstChild("Head")
-		if h then head = h end
-	end
+local function fireSilentAt(head)
+	if not head or not head.Parent then return false end
 	refreshMods()
-	if not (Utility and EnumLibrary and UseItem) then return end
+	if not UseItem then return false end
 	local lf = getFighter and getFighter() or nil
-	if not lf or not lf.EquippedItem then return end
+	if not lf then return false end
+	if not lf.EquippedItem then
+		pcall(function() lf:EquipItem(1) end)
+	end
+	if not lf.EquippedItem then return false end
 	local oid
 	pcall(function() oid = lf.EquippedItem:Get("ObjectID") end)
 	pcall(function() if not oid and lf.EquippedItem.Data then oid = lf.EquippedItem.Data.ObjectID end end)
+	if not oid then return false end
 	local se
-	pcall(function() se = EnumLibrary:ToEnum("StartShooting") end)
-	if not oid or not se then return end
+	pcall(function() if EnumLibrary then se = EnumLibrary:ToEnum("StartShooting") end end)
+	if not se then return false end
 	local cam = Workspace.CurrentCamera
-	local root = getRootPart and getRootPart() or (LP.Character and LP.Character:FindFirstChild("HumanoidRootPart"))
-	local fromCam = cam and cam.CFrame.Position or head.Position
-	local fromRoot = root and root.Position or fromCam
-	local fromTarget = head.Position + Vector3.new(0, 0.12, 0)
-	for _, from in ipairs({ fromCam, fromTarget, fromCam, fromTarget }) do
-		local data = encodeShot(from, head.Position, head)
+	local root = getRootPart and getRootPart() or nil
+	local hp = head.Position
+	local origins = {
+		cam and cam.CFrame.Position or hp,
+		hp + Vector3.new(0, 0.12, 0),
+		root and root.Position or hp,
+		hp + Vector3.new(0, 1.2, 0),
+	}
+	local okAny = false
+	for _, from in ipairs(origins) do
+		local data = encodeShot(from, hp, head)
 		if data then
-			pcall(function() UseItem:FireServer(oid, se, data, nil) end)
+			local ok = pcall(function() UseItem:FireServer(oid, se, data, nil) end)
+			okAny = okAny or ok
 		end
 	end
+	return okAny
+end
+
+RunService.Heartbeat:Connect(function()
+	if not S.SilentAim then return end
+	local holding = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+		or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
+	if not holding then return end
+	if tick() - lastSilent < 0.035 then return end
+	lastSilent = tick()
+	local head = nil
+	pcall(function() head = getTarget(false, S.AimFOV or 500) end)
+	if not head then pcall(function() head = getCrosshair(S.AimFOV or 500) end) end
+	if not head then return end
+	local model = head:FindFirstAncestorOfClass("Model") or head.Parent
+	if model then
+		local h = model:FindFirstChild("HitboxHead")
+			or model:FindFirstChild("HitboxHeadSmall")
+			or model:FindFirstChild("Head")
+		if h then head = h end
+	end
+	fireSilentAt(head)
 end)
+
 
 
 local lastTrig = 0
@@ -2624,4 +2646,35 @@ task.spawn(function()
 	end)
 
 	print("[pack2] extras ready")
+end)
+
+
+-- ensure third person + silent always running
+task.spawn(function()
+	local Players = game:GetService("Players")
+	local RunService = game:GetService("RunService")
+	local UIS = game:GetService("UserInputService")
+	local LP = Players.LocalPlayer
+	RunService.RenderStepped:Connect(function()
+		if not S or not S.ThirdPerson then
+			if S and S._tp2 then
+				local cam = workspace.CurrentCamera
+				if cam then
+					cam.CameraType = Enum.CameraType.Custom
+					local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+					if hum then cam.CameraSubject = hum end
+				end
+				S._tp2 = false
+			end
+			return
+		end
+		local cam = workspace.CurrentCamera
+		local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+		if not cam or not hrp then return end
+		cam.CameraType = Enum.CameraType.Scriptable
+		local dist = tonumber(S.ThirdDist) or 8
+		local pos = hrp.Position - hrp.CFrame.LookVector * dist + Vector3.new(0, 2.8, 0)
+		cam.CFrame = CFrame.lookAt(pos, hrp.Position + Vector3.new(0, 1.6, 0))
+		S._tp2 = true
+	end)
 end)
