@@ -29,7 +29,8 @@ _G.HUB = _G.HUB or {
 	ESP_Tracers = false, ESP_Offscreen = false,
 	MeleeReach = false, MeleeReachVal = 12,
 	AntiAim = false, AntiAimMode = "Jitter",
-	ChatSpam = false, ChatText = "cute.win",
+	ChatSpam = false, ChatText = "cute.win", ChatInterval = 0.1,
+
 	AutoCollect = false,
  Emote = "Off", EmoteSpeed = 1,
 	AntiAFK = false,
@@ -242,8 +243,40 @@ do
 	mPlus:AddSlider("ZoomVal", { Text = "Zoom FOV", Default = 120, Min = 70, Max = 120, Rounding = 0, Callback = function(v) S.ZoomVal = v end })
 	mPlus:AddToggle("NoCameraShake", { Text = "No Camera Shake", Default = false, Callback = function(v) S.NoCameraShake = v end })
 	mPlus:AddToggle("ChatSpam", { Text = "Chat Spam", Default = false, Callback = function(v) S.ChatSpam = v end })
+	mPlus:AddSlider("ChatInterval", { Text = "Chat Interval (s)", Default = 0.1, Min = 0.1, Max = 30, Rounding = 1, Callback = function(v) S.ChatInterval = v end })
 	mPlus:AddInput("ChatText", { Default = "cute.win", Numeric = false, Finished = true, Text = "Chat Text", Callback = function(v) S.ChatText = v end })
 	mPlus:AddToggle("AutoCollect", { Text = "Auto Collect Drops", Default = false, Callback = function(v) S.AutoCollect = v end })
+	
+	mPlus:AddButton("Spectate Next", function()
+		pcall(function()
+			local Players = game:GetService("Players")
+			local LP = Players.LocalPlayer
+			local list = Players:GetPlayers()
+			local idx = 1
+			for i, p in ipairs(list) do if p == LP then idx = i end end
+			local n = list[(idx % #list) + 1]
+			if n and n.Character then
+				local hum = n.Character:FindFirstChildOfClass("Humanoid")
+				local cam = workspace.CurrentCamera
+				if hum and cam then cam.CameraSubject = hum end
+			end
+		end)
+	end)
+	mPlus:AddButton("Unspectate", function()
+		pcall(function()
+			local LP = game:GetService("Players").LocalPlayer
+			local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+			local cam = workspace.CurrentCamera
+			if hum and cam then cam.CameraSubject = hum end
+		end)
+	end)
+	mPlus:AddToggle("NoFog", { Text = "No Fog", Default = false, Callback = function(v)
+		S.NoFog = v
+		pcall(function()
+			local L = game:GetService("Lighting")
+			if v then L.FogEnd = 1e6 else L.FogEnd = 1000 end
+		end)
+	end })
 	mPlus:AddButton("Reset Character", function()
 		pcall(function()
 			local hum = game:GetService("Players").LocalPlayer.Character and game:GetService("Players").LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
@@ -461,22 +494,40 @@ task.spawn(function()
 				end
 			end
 		end
-		if S.Tracers and (UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)) then
-			if tick() - (S._lt or 0) >= 0.08 then
+		-- bullet tracer only while actually shooting
+		local shooting = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
+		if S.Tracers and shooting then
+			if tick() - (S._lt or 0) >= 0.07 then
 				S._lt = tick()
 				local cam = workspace.CurrentCamera
 				if cam then
-					local from = cam.CFrame.Position
-					local to = from + cam.CFrame.LookVector * 200
+					local from = cam.CFrame.Position + cam.CFrame.LookVector * 1.5
+					local to = from + cam.CFrame.LookVector * 250
+					pcall(function()
+						if getTarget then
+							local h = getTarget(false, S.AimFOV or 400)
+							if h then to = h.Position end
+						elseif getCrosshair then
+							local h = getCrosshair(S.AimFOV or 400)
+							if h then to = h.Position end
+						end
+					end)
 					pcall(function()
 						local a = Instance.new("Part")
-						a.Anchored = true; a.CanCollide = false; a.Material = Enum.Material.Neon
-						a.Color = Color3.fromRGB(255, 100, 160)
-						local dist = (to - from).Magnitude
-						a.Size = Vector3.new(0.08, 0.08, dist)
+						a.Name = "CG_Bullet"
+						a.Anchored = true
+						a.CanCollide = false
+						a.CanQuery = false
+						a.CanTouch = false
+						a.Material = Enum.Material.Neon
+						a.Color = Color3.fromRGB(255, 120, 170)
+						local dist = math.max((to - from).Magnitude, 1)
+						a.Size = Vector3.new(0.06, 0.06, dist)
 						a.CFrame = CFrame.lookAt(from, to) * CFrame.new(0, 0, -dist/2)
 						a.Parent = tracerFolder
-						task.delay(S.TracerLife or 0.5, function() a:Destroy() end)
+						task.delay(tonumber(S.TracerLife) or 0.35, function()
+							if a then a:Destroy() end
+						end)
 					end)
 				end
 			end
@@ -854,35 +905,63 @@ UIListLayout.Parent = Container
 
 local function showHitUI(text)
     task.spawn(function()
-        local Box = Instance.new("Frame")
-        Box.Size = UDim2.new(1, 0, 0, 30)
-        Box.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-        Box.BackgroundTransparency = 0.2
-        Box.BorderSizePixel = 0
-        Box.Parent = Container
+        -- sharp hit log row
+        if Container then
+            local Box = Instance.new("Frame")
+            Box.Size = UDim2.new(1, 0, 0, 22)
+            Box.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+            Box.BackgroundTransparency = 0.25
+            Box.BorderSizePixel = 1
+            Box.BorderColor3 = Color3.fromRGB(50, 50, 58)
+            Box.Parent = Container
 
-        local UICorner = Instance.new("UICorner")
-        UICorner.CornerRadius = UDim.new(0, 4)
-        UICorner.Parent = Box
+            local Label = Instance.new("TextLabel")
+            Label.Size = UDim2.new(1, -12, 1, 0)
+            Label.Position = UDim2.fromOffset(6, 0)
+            Label.BackgroundTransparency = 1
+            Label.Font = Enum.Font.Code
+            Label.TextSize = 12
+            Label.TextColor3 = Color3.fromRGB(240, 240, 245)
+            Label.TextXAlignment = Enum.TextXAlignment.Left
+            Label.Text = tostring(text)
+            Label.Parent = Box
 
-        local Label = Instance.new("TextLabel")
-        Label.Size = UDim2.new(1, -10, 1, 0)
-        Label.Position = UDim2.new(0, 10, 0, 0)
-        Label.BackgroundTransparency = 1
-        Label.Font = Enum.Font.SourceSansBold
-        Label.TextSize = 14
-        Label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        Label.TextXAlignment = Enum.TextXAlignment.Left
-        Label.Text = text
-        Label.Parent = Box
-
-        task.wait(1.5)
-        for i = 0.2, 1, 0.1 do
-            Box.BackgroundTransparency = i
-            Label.TextTransparency = i
-            task.wait(0.02)
+            task.delay(1.2, function()
+                for i = 0, 1, 0.15 do
+                    Box.BackgroundTransparency = 0.25 + i * 0.75
+                    Label.TextTransparency = i
+                    task.wait(0.02)
+                end
+                Box:Destroy()
+            end)
         end
-        Box:Destroy()
+        -- center sharp cross hitmarker (no round)
+        pcall(function()
+            local pg = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
+            if not pg then return end
+            local sg = Instance.new("ScreenGui")
+            sg.Name = "CG_HitMark"
+            sg.IgnoreGuiInset = true
+            sg.ResetOnSpawn = false
+            sg.DisplayOrder = 60
+            sg.Parent = pg
+            local function line(rot, dx, dy)
+                local f = Instance.new("Frame")
+                f.AnchorPoint = Vector2.new(0.5, 0.5)
+                f.Size = UDim2.fromOffset(10, 2)
+                f.Position = UDim2.new(0.5, dx, 0.5, dy)
+                f.Rotation = rot
+                f.BorderSizePixel = 0
+                f.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                f.Parent = sg
+                local s = Instance.new("UIStroke")
+                s.Thickness = 1
+                s.Color = Color3.new(0, 0, 0)
+                s.Parent = f
+            end
+            line(45, -8, -8); line(45, 8, 8); line(-45, 8, -8); line(-45, -8, 8)
+            task.delay(0.12, function() sg:Destroy() end)
+        end)
     end)
 end
 
@@ -2352,7 +2431,7 @@ task.spawn(function()
 	local root = Instance.new("Frame")
 	root.AnchorPoint = Vector2.new(0.5, 0.5)
 	root.Position = UDim2.fromScale(0.5, 0.5)
-	root.Size = UDim2.fromOffset(80, 80)
+	root.Size = UDim2.fromOffset(64, 64)
 	root.BackgroundTransparency = 1
 	root.Visible = false
 	root.Parent = sg
@@ -2363,7 +2442,7 @@ task.spawn(function()
 		f.BorderSizePixel = 0
 		f.Parent = root
 		local o = Instance.new("UIStroke")
-		o.Thickness = 1.5
+		o.Thickness = 1
 		o.Color = Color3.new(0, 0, 0)
 		o.Parent = f
 		return f
@@ -2372,25 +2451,27 @@ task.spawn(function()
 
 	local brand = Instance.new("TextLabel")
 	brand.AnchorPoint = Vector2.new(0.5, 0)
-	brand.Position = UDim2.new(0.5, 0, 0.5, 28)
-	brand.Size = UDim2.fromOffset(120, 16)
+	brand.Position = UDim2.new(0.5, 0, 0.5, 22)
+	brand.Size = UDim2.fromOffset(100, 14)
 	brand.BackgroundTransparency = 1
 	brand.Font = Enum.Font.Code
-	brand.TextSize = 11
+	brand.TextSize = 10
 	brand.Text = "cute.win"
-	brand.TextStrokeTransparency = 0.25
+	brand.TextStrokeTransparency = 0.35
 	brand.TextStrokeColor3 = Color3.new(0, 0, 0)
 	brand.Parent = sg
 
 	local pulse = 0
-	local gap, baseLen = 4, 14
+	local gap, baseLen = 3, 11
 	RunService.RenderStepped:Connect(function(dt)
 		local on = S.CustomCrosshair == true
 		root.Visible = on
 		brand.Visible = on
 		if not on then return end
-		pulse = pulse + (dt or 0.016) * 5
-		local expand = 1 + 0.3 * math.sin(pulse)
+		dt = dt or 0.016
+		pulse = pulse + dt * 3.2
+		-- subtle length change only
+		local expand = 1 + 0.18 * math.sin(pulse)
 		local len = baseLen * expand
 		local thick = 2
 		up.Size = UDim2.fromOffset(thick, len)
@@ -2402,8 +2483,9 @@ task.spawn(function()
 		down.Position = UDim2.new(0.5, 0, 0.5, off)
 		left.Position = UDim2.new(0.5, -off, 0.5, 0)
 		right.Position = UDim2.new(0.5, off, 0.5, 0)
-		root.Rotation = (root.Rotation + (dt or 0.016) * 100) % 360
-		local col = Color3.fromHSV((tick() * 0.25) % 1, 0.9, 1)
+		-- slow rotate
+		root.Rotation = (root.Rotation + dt * 75) % 360
+		local col = Color3.fromHSV((tick() * 0.15) % 1, 0.75, 1)
 		for _, a in ipairs({ up, down, left, right }) do a.BackgroundColor3 = col end
 		brand.TextColor3 = col
 	end)
@@ -2671,20 +2753,22 @@ task.spawn(function()
 		end)
 	end)
 
-	-- Chat spam
+	-- Chat spam (interval)
 	task.spawn(function()
 		while true do
-			task.wait(4)
+			local waitS = tonumber(S.ChatInterval) or 0.1
+			if waitS < 0.1 then waitS = 0.1 end
+			task.wait(waitS)
 			if S.ChatSpam then
 				pcall(function()
-					local text = S.ChatText or "cute.win"
+					local text = tostring(S.ChatText or "cute.win")
 					local chat = game:GetService("TextChatService")
-					if chat and chat.ChatInputBarConfiguration then
-						local ch = chat.TextChannels and chat.TextChannels:FindFirstChild("RBXGeneral")
-						if ch then ch:SendAsync(text) end
-					else
-						local cs = LP.PlayerGui:FindFirstChild("Chat")
-						-- legacy fallback ignored
+					local ch = chat and chat.TextChannels and (
+						chat.TextChannels:FindFirstChild("RBXGeneral")
+						or chat.TextChannels:FindFirstChild("General")
+					)
+					if ch and ch.SendAsync then
+						ch:SendAsync(text)
 					end
 				end)
 			end
