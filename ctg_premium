@@ -133,7 +133,7 @@ _G.HUB = _G.HUB or {
 	CollectRange = 30,
 	CollectInterval = 0.25,
 	ZombieKill = false,
-	ZombieRange = 500,
+	ZombieRange = 2000,
 	ZombieBurst = 8,
 	ZombieTeamIgnore = true,
 	ZombieFireRate = 0.05,
@@ -586,7 +586,7 @@ do
 	local zg = zt:AddLeftGroupbox("Tower Combat")
 	zg:AddToggle("ZombieKill", { Text = "Enable Auto-Shoot", Default = false, Callback = function(v) S.ZombieKill = v end })
 	zg:AddSlider("ZombieFireRate", { Text = "Fire Rate", Default = 0.05, Min = 0.01, Max = 0.5, Rounding = 2, Callback = function(v) S.ZombieFireRate = v end })
-	zg:AddSlider("ZombieRange", { Text = "Max Distance", Default = 500, Min = 50, Max = 2000, Rounding = 0, Callback = function(v) S.ZombieRange = v end })
+	zg:AddSlider("ZombieRange", { Text = "Max Distance", Default = 2000, Min = 50, Max = 5000, Rounding = 0, Callback = function(v) S.ZombieRange = v end })
 	zg:AddToggle("ZombieLock", { Text = "Lock Above Target", Default = false, Callback = function(v) S.ZombieLock = v end })
 	zg:AddSlider("ZombieLockOffset", { Text = "Lock Height", Default = 14.5, Min = 1, Max = 30, Rounding = 1, Callback = function(v) S.ZombieLockOffset = v end })
 	zg:AddSlider("ZombieLockTol", { Text = "Lock Tolerance", Default = 0.1, Min = 0.1, Max = 10, Rounding = 1, Callback = function(v) S.ZombieLockTol = v end })
@@ -3913,71 +3913,95 @@ end)
 
 
 
--- ========== Tower Rage EXACT (from tower-rage-1) ==========
-task.spawn(function()
-	local cloneref = cloneref or clonereference or function(x) return x end
-	local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
-	local Players = cloneref(game:GetService("Players"))
-	local RunService = cloneref(game:GetService("RunService"))
-	local Workspace = cloneref(game:GetService("Workspace"))
-	local lplr = Players.LocalPlayer
 
-	local util, enum, FighterController
-	pcall(function() util = require(ReplicatedStorage.Modules.Utility) end)
-	pcall(function() enum = require(ReplicatedStorage.Modules.EnumLibrary) end)
-	pcall(function()
-		FighterController = require(lplr.PlayerScripts.Controllers.FighterController)
+
+-- ========== Tower Rage FIXED (same features, no lag scan) ==========
+task.spawn(function()
+	local RS = game:GetService("ReplicatedStorage")
+	local Players = game:GetService("Players")
+	local RunService = game:GetService("RunService")
+	local Workspace = game:GetService("Workspace")
+	local LP = Players.LocalPlayer
+
+	local util, enum, FC
+	local function mods()
+		pcall(function() util = util or require(RS.Modules.Utility) end)
+		pcall(function() enum = enum or require(RS.Modules.EnumLibrary) end)
+		pcall(function() FC = FC or require(LP.PlayerScripts.Controllers.FighterController) end)
+	end
+	mods()
+	task.spawn(function()
+		for _ = 1, 30 do
+			mods()
+			if util and enum and FC then break end
+			task.wait(0.5)
+		end
 	end)
 
-	-- map S <-> same behavior as getgenv().Config
-	local function C()
+	local lastFire, lastJitter, lastCollect, lastScan = 0, 0, 0, 0
+	local lockedRoot, jitterOff = nil, Vector3.zero
+	local hidePhase, phaseStart = "hit", tick()
+	local savedCF, hideCF = nil, nil
+	local tModel, tRoot, tHead = nil, nil, nil
+
+	local function cfg()
 		return {
-			Enabled = S.ZombieKill == true,
-			FireRate = tonumber(S.ZombieFireRate) or 0.05,
-			MaxDistance = tonumber(S.ZombieRange) or 500,
-			LockEnabled = S.ZombieLock == true,
-			LockOffset = tonumber(S.ZombieLockOffset) or 14.5,
-			LockTolerance = tonumber(S.ZombieLockTol) or 0.1,
-			JitterEnabled = S.ZombieJitter == true,
-			JitterRadius = tonumber(S.ZombieJitterRadius) or 14.0,
-			JitterInterval = tonumber(S.ZombieJitterInterval) or 0.3,
-			NoclipEnabled = S.ZombieNoclip == true,
-			AutoCollectEnabled = S.ZombieCollect ~= false,
-			CollectHP = S.ZombieCollectHP ~= false,
-			CollectAmmo = S.ZombieCollectAmmo ~= false,
-			CollectInterval = tonumber(S.ZombieCollectInterval) or 0.10,
-			HideEnabled = S.ZombieHide == true,
-			HitTime = tonumber(S.ZombieHitTime) or 0.35,
-			HideTime = tonumber(S.ZombieHideTime) or 0.35,
-			HideDistance = tonumber(S.ZombieHideDist) or 500,
+			on = S.ZombieKill == true,
+			rate = tonumber(S.ZombieFireRate) or 0.05,
+			dist = tonumber(S.ZombieRange) or 500,
+			lock = S.ZombieLock == true,
+			lockH = tonumber(S.ZombieLockOffset) or 14.5,
+			lockTol = tonumber(S.ZombieLockTol) or 0.1,
+			jitter = S.ZombieJitter == true,
+			jR = tonumber(S.ZombieJitterRadius) or 14,
+			jI = tonumber(S.ZombieJitterInterval) or 0.3,
+			noclip = S.ZombieNoclip == true,
+			collect = S.ZombieCollect ~= false,
+			hp = S.ZombieCollectHP ~= false,
+			ammo = S.ZombieCollectAmmo ~= false,
+			cInt = tonumber(S.ZombieCollectInterval) or 0.1,
+			hide = S.ZombieHide == true,
+			hitT = tonumber(S.ZombieHitTime) or 0.35,
+			hideT = tonumber(S.ZombieHideTime) or 0.35,
+			hideD = tonumber(S.ZombieHideDist) or 500,
 		}
 	end
 
-	local lastFire = 0
-	local lastJitter = 0
-	local lastCollect = 0
-	local lockedTargetRoot = nil
-	local currentJitterOffset = Vector3.zero
-	local hidePhase = "hit"
-	local phaseStart = tick()
-	local savedReturnCF = nil
-	local hiddenToCF = nil
+	local function noclip(state)
+		local char = LP.Character
+		if not char then return end
+		for _, p in ipairs(char:GetDescendants()) do
+			if p:IsA("BasePart") then
+				if state then p.CanCollide = false
+				elseif p.Name ~= "HumanoidRootPart" then p.CanCollide = true end
+			end
+		end
+	end
 
-	local function getClosestTarget()
-		local cfg = C()
-		local char = lplr.Character
+	LP.CharacterAdded:Connect(function(c)
+		c:WaitForChild("HumanoidRootPart", 5)
+		task.wait(0.1)
+		if S.ZombieNoclip then noclip(true) end
+		hidePhase, phaseStart = "hit", tick()
+		savedCF, hideCF, lockedRoot = nil, nil, nil
+	end)
+
+	-- exact same target pick as tower-rage-1 (GetDescendants), throttled only by time
+	local function scanTargets()
+		local c = cfg()
+		local char = LP.Character
 		local myRoot = char and char:FindFirstChild("HumanoidRootPart")
-		if not myRoot then return nil, nil, nil end
-
+		if not myRoot then
+			tModel, tRoot, tHead = nil, nil, nil
+			return
+		end
 		local closestModel, closestRoot, closestHead = nil, nil, nil
-		local closestDist = cfg.MaxDistance
-
+		local closestDist = c.dist -- MaxDistance (same as original)
 		for _, obj in ipairs(Workspace:GetDescendants()) do
 			if obj:IsA("Model") and obj ~= char then
 				local pRoot = obj:FindFirstChild("HumanoidRootPart")
 				local pHead = obj:FindFirstChild("Head")
 				local pHum = obj:FindFirstChildWhichIsA("Humanoid")
-
 				if pRoot and pHead and pHum and pHum.Health > 0 then
 					if not Players:GetPlayerFromCharacter(obj) then
 						local dist = (myRoot.Position - pRoot.Position).Magnitude
@@ -3991,261 +4015,160 @@ task.spawn(function()
 				end
 			end
 		end
-		return closestModel, closestRoot, closestHead
-	end
-
-	local function applyNoclip(state)
-		local char = lplr.Character
-		if not char then return end
-		for _, part in ipairs(char:GetDescendants()) do
-			if part:IsA("BasePart") then
-				if state then
-					part.CanCollide = false
-				else
-					if part.Name ~= "HumanoidRootPart" then
-						part.CanCollide = true
-					end
-				end
-			end
-		end
-	end
-
-	lplr.CharacterAdded:Connect(function(char)
-		char:WaitForChild("HumanoidRootPart", 5)
-		task.wait(0.1)
-		if C().NoclipEnabled then
-			applyNoclip(true)
-		end
-		hidePhase = "hit"
-		phaseStart = tick()
-		savedReturnCF = nil
-		hiddenToCF = nil
-	end)
-
-	local function lockAbove(targetRoot)
-		local cfg = C()
-		local char = lplr.Character
-		if not char then return end
-		local myRoot = char:FindFirstChild("HumanoidRootPart")
-		if not myRoot then return end
-		if not targetRoot or not targetRoot.Parent then return end
-
-		local offset = cfg.LockOffset or 10
-		local idealPos = targetRoot.Position + Vector3.new(0, offset, 0)
-
-		if cfg.JitterEnabled then
-			idealPos = idealPos + currentJitterOffset
-		end
-
-		local targetChanged = (lockedTargetRoot ~= targetRoot)
-		lockedTargetRoot = targetRoot
-
-		local tolerance = cfg.LockTolerance or 2
-		local drift = (myRoot.Position - idealPos).Magnitude
-		if not targetChanged and drift < tolerance then
-			return
-		end
-
-		myRoot.CFrame = CFrame.new(idealPos) * (myRoot.CFrame - myRoot.CFrame.Position)
-	end
-
-	local function releaseLock()
-		lockedTargetRoot = nil
-		currentJitterOffset = Vector3.zero
-	end
-
-	local function updateJitter(targetRoot)
-		local cfg = C()
-		if not cfg.JitterEnabled then
-			currentJitterOffset = Vector3.zero
-			return
-		end
-		local now = tick()
-		if now - lastJitter < (cfg.JitterInterval or 0.15) then return end
-		lastJitter = now
-
-		local r = cfg.JitterRadius or 4
-		local amount = (math.random() * 2 - 1) * r
-		if targetRoot then
-			currentJitterOffset = targetRoot.CFrame.RightVector * amount
-		else
-			currentJitterOffset = Vector3.new(amount, 0, 0)
-		end
+		tModel, tRoot, tHead = closestModel, closestRoot, closestHead
 	end
 
 	local function doCollect()
-		local cfg = C()
-		if not cfg.AutoCollectEnabled then return end
-		local now = tick()
-		if now - lastCollect < (cfg.CollectInterval or 0.10) then return end
-		lastCollect = now
-
-		local char = lplr.Character
-		local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-		local hum  = char and char:FindFirstChildOfClass("Humanoid")
+		local c = cfg()
+		if not c.collect then return end
+		if tick() - lastCollect < c.cInt then return end
+		lastCollect = tick()
+		local char = LP.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
 		if not hrp or not hum or hum.Health <= 0 then return end
-
-		local wantHP   = cfg.CollectHP and hum.Health < hum.MaxHealth
-		local wantAmmo = cfg.CollectAmmo
+		local wantHP = c.hp and hum.Health < hum.MaxHealth
+		local wantAmmo = c.ammo
 		if not wantHP and not wantAmmo then return end
-
-		local firetouch = firetouchinterest
-		if not firetouch then return end
-
+		if not firetouchinterest then return end
 		for _, obj in ipairs(Workspace:GetChildren()) do
 			if obj.Name == "_drop" and obj:IsA("BasePart") then
-				local isHP   = obj:FindFirstChild("Health") ~= nil
-				local isAmmo = obj:FindFirstChild("Ammo") ~= nil
-					or obj:FindFirstChild("AmmoBalanced") ~= nil
+				local isHP = obj:FindFirstChild("Health") ~= nil
+				local isAmmo = obj:FindFirstChild("Ammo") ~= nil or obj:FindFirstChild("AmmoBalanced") ~= nil
 				if (wantHP and isHP) or (wantAmmo and isAmmo) then
 					pcall(function()
-						firetouch(hrp, obj, 0)
-						firetouch(hrp, obj, 1)
+						firetouchinterest(hrp, obj, 0)
+						firetouchinterest(hrp, obj, 1)
 					end)
 				end
 			end
 		end
 	end
 
-	local function pickHideCFrame(fromCF)
-		local cfg = C()
-		local sign = (math.random() < 0.5) and -1 or 1
-		local dir = Vector3.new(sign, 0, 0)
-		local dest = fromCF.Position + dir * (cfg.HideDistance or 100)
-		return CFrame.new(dest) * (fromCF - fromCF.Position)
+	local function lockAbove(root)
+		local c = cfg()
+		local my = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+		if not my or not root or not root.Parent then return end
+		local ideal = root.Position + Vector3.new(0, c.lockH, 0)
+		if c.jitter then ideal = ideal + jitterOff end
+		local changed = lockedRoot ~= root
+		lockedRoot = root
+		if not changed and (my.Position - ideal).Magnitude < c.lockTol then return end
+		my.CFrame = CFrame.new(ideal) * (my.CFrame - my.CFrame.Position)
+	end
+
+	local function updateJitter(root)
+		local c = cfg()
+		if not c.jitter then jitterOff = Vector3.zero; return end
+		if tick() - lastJitter < c.jI then return end
+		lastJitter = tick()
+		local amount = (math.random() * 2 - 1) * c.jR
+		jitterOff = root and (root.CFrame.RightVector * amount) or Vector3.new(amount, 0, 0)
+	end
+
+	local function fireHead(head)
+		mods()
+		if not util or not enum or not FC then return end
+		local lf = FC.LocalFighter
+		if not lf or not lf.EquippedItem then return end
+		local oid
+		pcall(function() oid = lf.EquippedItem:Get("ObjectID") end)
+		if not oid then return end
+		local se
+		pcall(function() se = enum:ToEnum("StartShooting") end)
+		if not se then return end
+		local originPos = head.Position + Vector3.new(0, 1, 0)
+		local targetPos = head.Position
+		local aimCF = CFrame.lookAt(originPos, targetPos)
+		local targetCF = head.CFrame
+		local aimed = targetPos + Vector3.new((math.random()-0.5)*0.02,(math.random()-0.5)*0.02,(math.random()-0.5)*0.02)
+		local objOff = head.CFrame:ToObjectSpace(CFrame.new(aimed))
+		local data = {
+			[utf8.char(1)] = {
+				[utf8.char(0)] = util:EncodeCFrame(aimCF),
+				[utf8.char(1)] = util:EncodeCFrame(targetCF),
+				[utf8.char(2)] = head,
+				[utf8.char(3)] = util:EncodeCFrame(objOff),
+			}
+		}
+		pcall(function()
+			RS.Remotes.Replication.Fighter.UseItem:FireServer(oid, se, data, nil)
+		end)
 	end
 
 	RunService.Heartbeat:Connect(function()
-		local cfg = C()
-		if not cfg.Enabled then return end
+		if not S then return end
+		local c = cfg()
 
-		if cfg.NoclipEnabled then
-			applyNoclip(true)
-		end
-
+		-- collect always when toggle on (usable without combat)
 		doCollect()
 
-		local char = lplr.Character
-		local myRoot = char and char:FindFirstChild("HumanoidRootPart")
+		if c.noclip then pcall(noclip, true) end
+
+		if not c.on then
+			lockedRoot = nil
+			return
+		end
+
+		local char = LP.Character
+		local my = char and char:FindFirstChild("HumanoidRootPart")
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
-		if not char or not myRoot or not hum or hum.Health <= 0 then
-			if lockedTargetRoot then releaseLock() end
-			hidePhase = "hit"
-			savedReturnCF = nil
-			hiddenToCF = nil
+		if not my or not hum or hum.Health <= 0 then
+			lockedRoot = nil
 			return
 		end
 
-		if cfg.HideEnabled and hidePhase == "hide" then
-			local now = tick()
-			if hiddenToCF and (myRoot.Position - hiddenToCF.Position).Magnitude > 1 then
-				myRoot.CFrame = hiddenToCF
+		if tick() - lastScan >= 0 then
+			lastScan = tick()
+			scanTargets()
+		end
+
+		if c.hide and hidePhase == "hide" then
+			if hideCF and (my.Position - hideCF.Position).Magnitude > 1 then
+				my.CFrame = hideCF
 			end
-			if now - phaseStart >= (cfg.HideTime or 0.5) then
-				if savedReturnCF then
-					myRoot.CFrame = savedReturnCF
-				end
-				savedReturnCF = nil
-				hiddenToCF = nil
-				hidePhase = "hit"
-				phaseStart = now
+			if tick() - phaseStart >= c.hideT then
+				if savedCF then my.CFrame = savedCF end
+				savedCF, hideCF = nil, nil
+				hidePhase, phaseStart = "hit", tick()
 			end
 			return
 		end
 
-		local targetModel, targetRoot, targetHead = getClosestTarget()
-
-		if cfg.HideEnabled then
-			if not targetModel or not targetRoot then
-				hidePhase = "hit"
-				phaseStart = tick()
-				if lockedTargetRoot then releaseLock() end
+		if c.hide then
+			if not tRoot then
+				hidePhase, phaseStart = "hit", tick()
+				lockedRoot = nil
 				return
 			end
-
-			local now = tick()
-			if hidePhase == "hit" then
-				if now - phaseStart >= (cfg.HitTime or 1.0) then
-					savedReturnCF = myRoot.CFrame
-					hiddenToCF = pickHideCFrame(savedReturnCF)
-					myRoot.CFrame = hiddenToCF
-					hidePhase = "hide"
-					phaseStart = now
-					return
-				end
+			if hidePhase == "hit" and tick() - phaseStart >= c.hitT then
+				savedCF = my.CFrame
+				local sign = (math.random() < 0.5) and -1 or 1
+				hideCF = CFrame.new(my.Position + Vector3.new(sign * c.hideD, 0, 0)) * (my.CFrame - my.CFrame.Position)
+				my.CFrame = hideCF
+				hidePhase, phaseStart = "hide", tick()
+				return
 			end
 		else
 			if hidePhase == "hide" then
-				if savedReturnCF then
-					myRoot.CFrame = savedReturnCF
-				end
-				savedReturnCF = nil
-				hiddenToCF = nil
-				hidePhase = "hit"
-				phaseStart = tick()
+				if savedCF then my.CFrame = savedCF end
+				savedCF, hideCF = nil, nil
+				hidePhase, phaseStart = "hit", tick()
 			end
 		end
 
-		if not targetModel or not targetHead or not targetRoot then
-			if lockedTargetRoot then releaseLock() end
+		if not tHead or not tRoot then
+			lockedRoot = nil
 			return
 		end
 
-		pcall(function()
-			if not FighterController then
-				FighterController = require(lplr.PlayerScripts.Controllers.FighterController)
-			end
-		end)
-		local localFighter = FighterController and FighterController.LocalFighter
-		if not localFighter or not localFighter.EquippedItem then return end
+		if c.lock and c.jitter then updateJitter(tRoot) end
+		if c.lock then lockAbove(tRoot) else lockedRoot = nil end
 
-		if cfg.LockEnabled and cfg.JitterEnabled then
-			updateJitter(targetRoot)
-		end
-
-		if cfg.LockEnabled then
-			pcall(lockAbove, targetRoot)
-		elseif lockedTargetRoot then
-			releaseLock()
-		end
-
-		if tick() - lastFire < cfg.FireRate then return end
+		if tick() - lastFire < c.rate then return end
 		lastFire = tick()
-
-		if not util then pcall(function() util = require(ReplicatedStorage.Modules.Utility) end) end
-		if not enum then pcall(function() enum = require(ReplicatedStorage.Modules.EnumLibrary) end) end
-		if not util or not enum then return end
-
-		local originPos = targetHead.Position + Vector3.new(0, 1, 0)
-		local targetPos = targetHead.Position
-		local aimCF = CFrame.lookAt(originPos, targetPos)
-		local targetCF = targetHead.CFrame
-
-		local randomOffset = Vector3.new(
-			(math.random() - 0.5) * 0.02,
-			(math.random() - 0.5) * 0.02,
-			(math.random() - 0.5) * 0.02
-		)
-		local aimedPos = targetPos + randomOffset
-		local objSpaceHeadOffset = targetHead.CFrame:ToObjectSpace(CFrame.new(aimedPos))
-
-		local cameradata = {}
-		cameradata[utf8.char(1)] = {
-			[utf8.char(0)] = util:EncodeCFrame(aimCF),
-			[utf8.char(1)] = util:EncodeCFrame(targetCF),
-			[utf8.char(2)] = targetHead,
-			[utf8.char(3)] = util:EncodeCFrame(objSpaceHeadOffset)
-		}
-
-		pcall(function()
-			ReplicatedStorage.Remotes.Replication.Fighter.UseItem:FireServer(
-				localFighter.EquippedItem:Get("ObjectID"),
-				enum:ToEnum("StartShooting"),
-				cameradata,
-				nil
-			)
-		end)
+		fireHead(tHead)
 	end)
 
-	print("[tower-rage] EXACT loaded")
+	print("[tower-rage] fixed ready")
 end)
