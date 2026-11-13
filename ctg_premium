@@ -2039,32 +2039,9 @@ local function silentFire(head)
 	end
 end
 
--- silent: only when YOU hold fire (no auto spray)
-RunService.Heartbeat:Connect(function()
-	if not S.SilentAim then return end
-	if S._silentBlock then return end
-	if S.WithinFOVOnly ~= false then
-		-- FOV enforced inside silentGetHead via getCrosshair first
-	end
-	local holding = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
-		or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
-	if not holding then return end
-	local cd = 0.03
-	if tick() - _silent.last < cd then return end
-	_silent.last = tick()
-	local head = silentGetHead()
-	if not head then return end
-	-- wall check optional
-	if S.WallCheck then
-		local cam = Workspace.CurrentCamera
-		local from = cam and cam.CFrame.Position or head.Position
-		local model = head:FindFirstAncestorOfClass("Model")
-		if hasLOS and not hasLOS(from, head.Position, model) then
-			return
-		end
-	end
-	silentFire(head)
-end)
+-- silent: NO remote spam while holding.
+-- Only rewrite real shots in GunModule.StartShooting (you must fire the gun).
+-- silentFire kept for optional manual use; not connected to Heartbeat.
 
 -- silent also rewrites gun shot packet when you shoot (client path)
 task.spawn(function()
@@ -2079,7 +2056,7 @@ task.spawn(function()
 	local prev = GunModule.StartShooting
 	GunModule.StartShooting = function(self, ...)
 		local a, b, c, d, e = prev(self, ...)
-		if not S.SilentAim then
+		if not S.SilentAim or S._silentBlock then
 			return a, b, c, d, e
 		end
 		local isLocal = false
@@ -2090,6 +2067,7 @@ task.spawn(function()
 		if not isLocal or type(c) ~= "table" then
 			return a, b, c, d, e
 		end
+		-- only redirect the shot the player actually fired
 		local head = silentGetHead()
 		if head and Utility then
 			local cam = Workspace.CurrentCamera
