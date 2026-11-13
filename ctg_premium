@@ -2026,22 +2026,17 @@ local function silentFire(head)
 	table.insert(fromList, aimPos + Vector3.new(0, 0.05, 0))
 	table.insert(fromList, aimPos + Vector3.new(0, 0.2, 0))
 
-	local reps = (S.SilentManipulate and 2) or 1
-	for _ = 1, reps do
-		for _, from in ipairs(fromList) do
-			local data = encodeShot(from, aimPos, head)
-			if data then
-				pcall(function()
-					UseItem:FireServer(oid, se, data, nil)
-				end)
-			end
+	for _, from in ipairs(fromList) do
+		local data = encodeShot(from, aimPos, head)
+		if data then
+			pcall(function()
+				UseItem:FireServer(oid, se, data, nil)
+			end)
 		end
 	end
 end
 
--- silent: NO remote spam while holding.
--- Only rewrite real shots in GunModule.StartShooting (you must fire the gun).
--- silentFire kept for optional manual use; not connected to Heartbeat.
+-- silent: packet rewrite only (no hold auto fire)
 
 -- silent also rewrites gun shot packet when you shoot (client path)
 task.spawn(function()
@@ -2056,7 +2051,7 @@ task.spawn(function()
 	local prev = GunModule.StartShooting
 	GunModule.StartShooting = function(self, ...)
 		local a, b, c, d, e = prev(self, ...)
-		if not S.SilentAim or S._silentBlock then
+		if not S.SilentAim then
 			return a, b, c, d, e
 		end
 		local isLocal = false
@@ -2067,7 +2062,6 @@ task.spawn(function()
 		if not isLocal or type(c) ~= "table" then
 			return a, b, c, d, e
 		end
-		-- only redirect the shot the player actually fired
 		local head = silentGetHead()
 		if head and Utility then
 			local cam = Workspace.CurrentCamera
