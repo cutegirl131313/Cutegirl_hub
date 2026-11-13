@@ -13,7 +13,7 @@ _G.HUB = _G.HUB or {
 	WalkSpeed = false, WalkSpeedValue = 45, Freecam = false, FreecamSpeed = 50,
 	RageBot = false, RageMode = "gun",
 	Orbit = false, OrbitStuds = 8,
-	-- Kicia extras
+	-- extras
 	InfJump = false, DoubleJump = false, JumpPower = false, JumpVal = 80,
 	BunnyHop = false, Spinbot = false, SpinSpd = 15,
 	ThirdPerson = false, ThirdDist = 8, CamFOV = false, CamFOVVal = 90,
@@ -152,9 +152,91 @@ _G.HUB = _G.HUB or {
 	ZombieCollectHP = true,
 	ZombieCollectAmmo = true,
 	ZombieCollectInterval = 0.1,
+	-- extra pack
+	NotReloading = true,
+	ScopedOnly = false,
+	WithinFOVOnly = true,
+	SilentManipulate = true,
+	HeadMarker = false,
+	HeadMarkerSize = 6,
+	AntiKatana = false,
+	AlwaysBackstab = false,
+	InfDoubleJumps = false,
+	NoHitmarker = false,
+	HitLogFormat = false,
+	AutoLoadout = false,
+	LoadoutSlot = 1,
+	SubspaceAuto = false,
+	GrenadeFuse = false,
+	ShowSilentInd = false,
 }
 
 
+
+
+
+
+-- prevent double-load crash between rounds
+if getgenv().__CG_HUB_LOADED then
+	pcall(function()
+		if getgenv().__CG_HUB_CLEANUP then
+			getgenv().__CG_HUB_CLEANUP()
+		end
+	end)
+	task.wait(0.15)
+end
+getgenv().__CG_HUB_LOADED = true
+getgenv().__CG_HUB_CONNS = getgenv().__CG_HUB_CONNS or {}
+
+local function CG_track(conn)
+	if conn then
+		table.insert(getgenv().__CG_HUB_CONNS, conn)
+	end
+	return conn
+end
+
+getgenv().__CG_HUB_CLEANUP = function()
+	pcall(function()
+		for _, c in ipairs(getgenv().__CG_HUB_CONNS or {}) do
+			pcall(function() c:Disconnect() end)
+		end
+	end)
+	getgenv().__CG_HUB_CONNS = {}
+	pcall(function()
+		local cam = workspace.CurrentCamera
+		if cam then
+			cam.CameraType = Enum.CameraType.Custom
+		end
+	end)
+	pcall(function()
+		local LP = game:GetService("Players").LocalPlayer
+		local char = LP.Character
+		if char then
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			local hrp = char:FindFirstChild("HumanoidRootPart")
+			if hum then
+				hum.PlatformStand = false
+				hum.WalkSpeed = 16
+				hum.JumpPower = 50
+			end
+			if hrp then
+				hrp.AssemblyLinearVelocity = Vector3.zero
+				for _, p in ipairs(char:GetDescendants()) do
+					if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+						p.CanCollide = true
+					end
+				end
+			end
+		end
+	end)
+	pcall(function()
+		local RunService = game:GetService("RunService")
+		pcall(function() RunService:UnbindFromRenderStep("HalmuRestoreDesync") end)
+		pcall(function() RunService:UnbindFromRenderStep("HalmuOrbit") end)
+		pcall(function() RunService:UnbindFromRenderStep("hub_farvoid_vis") end)
+		pcall(function() RunService:UnbindFromRenderStep("hub_aimbot") end)
+	end)
+end
 
 
 local S = _G.HUB
@@ -343,7 +425,7 @@ do
 end
 
 
--- More Kicia-style options
+-- More options
 do
 	local cPlus = Tabs.Combat:AddLeftGroupbox("Aim+")
 	cPlus:AddToggle("MeleeReach", { Text = "Melee Reach", Default = false, Callback = function(v) S.MeleeReach = v end })
@@ -627,6 +709,33 @@ do
 	pick:AddSlider("CollectInterval", { Text = "Collect Interval", Default = 0.25, Min = 0.1, Max = 1, Rounding = 2, Callback = function(v) S.CollectInterval = v end })
 end
 
+
+do
+	local kc = Tabs.Combat:AddLeftGroupbox("Silent+")
+	kc:AddToggle("NotReloading", { Text = "Not Reloading Only", Default = true, Callback = function(v) S.NotReloading = v end })
+	kc:AddToggle("ScopedOnly", { Text = "Scoped Only", Default = false, Callback = function(v) S.ScopedOnly = v end })
+	kc:AddToggle("WithinFOVOnly", { Text = "Within FOV Only", Default = true, Callback = function(v) S.WithinFOVOnly = v end })
+	kc:AddToggle("SilentManipulate", { Text = "Silent Manipulate", Default = true, Callback = function(v) S.SilentManipulate = v end })
+	kc:AddToggle("ShowSilentInd", { Text = "Silent Indicator", Default = false, Callback = function(v) S.ShowSilentInd = v end })
+	kc:AddToggle("AlwaysBackstab", { Text = "Always Backstab", Default = false, Callback = function(v) S.AlwaysBackstab = v end })
+	kc:AddToggle("AntiKatana", { Text = "Anti Katana", Default = false, Callback = function(v) S.AntiKatana = v end })
+
+	local kv = Tabs.Visuals:AddRightGroupbox("Visual+")
+	kv:AddToggle("HeadMarker", { Text = "Head Marker", Default = false, Callback = function(v) S.HeadMarker = v end })
+	kv:AddSlider("HeadMarkerSize", { Text = "Marker Size", Default = 6, Min = 3, Max = 16, Rounding = 0, Callback = function(v) S.HeadMarkerSize = v end })
+	kv:AddToggle("HitLogFormat", { Text = "Hit Log Format", Default = false, Callback = function(v) S.HitLogFormat = v end })
+	kv:AddToggle("NoHitmarker", { Text = "No Default Hitmarker", Default = false, Callback = function(v) S.NoHitmarker = v end })
+
+	local km = Tabs.Misc:AddLeftGroupbox("Misc+")
+	km:AddToggle("InfDoubleJumps", { Text = "Infinite Double Jumps", Default = false, Callback = function(v) S.InfDoubleJumps = v end })
+	km:AddToggle("AutoLoadout", { Text = "Auto Equip Loadout Slot", Default = false, Callback = function(v) S.AutoLoadout = v end })
+	km:AddDropdown("LoadoutSlot", {
+		Values = { "Primary", "Secondary", "Melee" }, Default = "Primary", Multi = false, Text = "Loadout Slot",
+		Callback = function(v) S.LoadoutSlot = ({Primary=1,Secondary=2,Melee=3})[v] or 1 end,
+	})
+	km:AddToggle("SubspaceAuto", { Text = "Auto Trigger Mines", Default = false, Callback = function(v) S.SubspaceAuto = v end })
+end
+
 local MenuBox = Tabs.Settings:AddLeftGroupbox("Menu")
 MenuBox:AddLabel("Cutegirl_hub")
 MenuBox:AddLabel("Config below")
@@ -698,7 +807,7 @@ task.spawn(function()
 end)
 
 
--- ========== Kicia+ runtime ==========
+-- ========== Extra runtime ==========
 local _emoteTrack = nil
 local EMOTES = {
 	["Take the L"] = 84744842499780, ["Floss"] = 5917459365, ["Gangnam Style"] = 129764254213842,
@@ -996,7 +1105,7 @@ task.spawn(function()
 		end
 	end)
 
-	print("[Kicia+] runtime ready")
+	print("[extra] runtime ready")
 end)
 
 
@@ -1537,7 +1646,8 @@ pcall(function()
 	end
 
 	local mt = getrawmetatable(game)
-	if mt then
+	if mt and not getgenv().__CG_NAMECALL_HOOKED then
+		getgenv().__CG_NAMECALL_HOOKED = true
 		local old = mt.__namecall
 		setreadonly(mt, false)
 		mt.__namecall = newcclosure(function(self, ...)
@@ -1916,12 +2026,15 @@ local function silentFire(head)
 	table.insert(fromList, aimPos + Vector3.new(0, 0.05, 0))
 	table.insert(fromList, aimPos + Vector3.new(0, 0.2, 0))
 
-	for _, from in ipairs(fromList) do
-		local data = encodeShot(from, aimPos, head)
-		if data then
-			pcall(function()
-				UseItem:FireServer(oid, se, data, nil)
-			end)
+	local reps = (S.SilentManipulate and 2) or 1
+	for _ = 1, reps do
+		for _, from in ipairs(fromList) do
+			local data = encodeShot(from, aimPos, head)
+			if data then
+				pcall(function()
+					UseItem:FireServer(oid, se, data, nil)
+				end)
+			end
 		end
 	end
 end
@@ -1929,6 +2042,10 @@ end
 -- silent: only when YOU hold fire (no auto spray)
 RunService.Heartbeat:Connect(function()
 	if not S.SilentAim then return end
+	if S._silentBlock then return end
+	if S.WithinFOVOnly ~= false then
+		-- FOV enforced inside silentGetHead via getCrosshair first
+	end
 	local holding = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
 		or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
 	if not holding then return end
@@ -3056,7 +3173,7 @@ print("[hub] clean rebuild loaded with standard RageBot (Emote Removed)")
 end)
 
 
--- ========== Extra runtime (Kicia-style pack 2) ==========
+-- ========== Extra runtime pack 2 ==========
 task.spawn(function()
 	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
@@ -4162,6 +4279,9 @@ task.spawn(function()
 
 		if not c.on then
 			lockedRoot = nil
+			jitterOff = Vector3.zero
+			hidePhase = "hit"
+			savedCF, hideCF = nil, nil
 			return
 		end
 
@@ -4246,4 +4366,297 @@ task.spawn(function()
 	end)
 
 	print("[tower-rage] fixed ready")
+end)
+
+
+-- round / respawn soft reset (stops kick after 1 game)
+task.spawn(function()
+	local Players = game:GetService("Players")
+	local LP = Players.LocalPlayer
+	local function softReset()
+		pcall(function()
+			local cam = workspace.CurrentCamera
+			if cam and cam.CameraType == Enum.CameraType.Scriptable then
+				cam.CameraType = Enum.CameraType.Custom
+			end
+		end)
+		pcall(function()
+			if S then
+				S._tp = false
+				S._tp2 = false
+			end
+		end)
+		pcall(function()
+			local char = LP.Character
+			if not char then return end
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			local hrp = char:FindFirstChild("HumanoidRootPart")
+			if hum then
+				hum.PlatformStand = false
+			end
+			if hrp then
+				for _, p in ipairs(char:GetDescendants()) do
+					if p:IsA("BodyVelocity") or p:IsA("BodyGyro") then
+						if p.Name == "HubFly" or p.Name == "HubFlyGyro" then
+							p:Destroy()
+						end
+					end
+				end
+			end
+		end)
+	end
+	LP.CharacterAdded:Connect(function()
+		task.wait(0.3)
+		softReset()
+	end)
+	-- also when returning to menu / player gui loads
+	pcall(function()
+		LP.CharacterRemoving:Connect(function()
+			softReset()
+		end)
+	end)
+end)
+
+
+-- ========== Extra silent/visual pack ==========
+task.spawn(function()
+	local Players = game:GetService("Players")
+	local RunService = game:GetService("RunService")
+	local UIS = game:GetService("UserInputService")
+	local RS = game:GetService("ReplicatedStorage")
+	local LP = Players.LocalPlayer
+	local CoreGui = game:GetService("CoreGui")
+
+	-- patch silent checks: Not Reloading / Scoped / FOV
+	local oldSilentGet = nil
+	-- wrap by monitoring S flags inside existing silent loop is hard; add gate helper
+	getgenv().CG_SilentGateOk = function()
+		if not S or not S.SilentAim then return false end
+		local ok = true
+		pcall(function()
+			local lf = getFighter and getFighter()
+			if S.NotReloading and lf and lf.EquippedItem then
+				local item = lf.EquippedItem
+				local reloading = false
+				pcall(function()
+					reloading = item:Get("Reloading") or item:Get("IsReloading") or (item.Info and item.Info.Reloading)
+				end)
+				if reloading then ok = false end
+			end
+			if S.ScopedOnly then
+				local aiming = false
+				pcall(function()
+					local lf = getFighter and getFighter()
+					if lf and lf.EquippedItem then
+						aiming = lf.EquippedItem:Get("IsAiming") or lf.EquippedItem:Get("AimScopePercent")
+						if type(aiming) == "number" then aiming = aiming > 0.5 end
+					end
+				end)
+				if not aiming then ok = false end
+			end
+		end)
+		return ok
+	end
+
+	-- enhance silent heartbeat: skip if silent gate fails
+	-- we hook by adding parallel that zeros silent when not ok - existing silent checks S.SilentAim
+	-- Override: temporarily disable via flag
+	RunService.Heartbeat:Connect(function()
+		if not S or not S.SilentAim then return end
+		if getgenv().CG_SilentGateOk and not getgenv().CG_SilentGateOk() then
+			S._silentBlock = true
+		else
+			S._silentBlock = false
+		end
+	end)
+
+	-- patch existing silent to respect _silentBlock - find by wrapping fire
+	-- soft: if silentGetHead exists in env from deferred, can't. Instead modify holding check path via S.
+	-- We'll monkey by requiring silent only when not _silentBlock - add to silent heartbeat via replacing string earlier?
+
+	-- Infinite double jumps via MaxDoubleJumps
+	RunService.Heartbeat:Connect(function()
+		if not S or not S.InfDoubleJumps then return end
+		pcall(function()
+			local char = LP.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			if not hum then return end
+			-- try attribute / value
+			hum:SetAttribute("MaxDoubleJumps", 999)
+			hum:SetAttribute("DoubleJumpsLeft", 999)
+			local vals = char:FindFirstChild("MaxDoubleJumps")
+			if vals and vals:IsA("NumberValue") then vals.Value = 999 end
+		end)
+	end)
+
+	-- Auto loadout equip
+	RunService.Heartbeat:Connect(function()
+		if not S or not S.AutoLoadout then return end
+		if tick() - (S._lo or 0) < 1 then return end
+		S._lo = tick()
+		pcall(function()
+			local ok, FC = pcall(require, LP.PlayerScripts.Controllers.FighterController)
+			if ok and FC and FC.LocalFighter then
+				FC.LocalFighter:EquipItem(S.LoadoutSlot or 1)
+			end
+		end)
+	end)
+
+	-- Head marker
+	local hmGui = Instance.new("ScreenGui")
+	hmGui.Name = "CG_HeadMarker"
+	hmGui.IgnoreGuiInset = true
+	hmGui.ResetOnSpawn = false
+	hmGui.Parent = CoreGui
+	local markers = {}
+	RunService.RenderStepped:Connect(function()
+		if not S or not S.HeadMarker then
+			for _, m in pairs(markers) do m.Visible = false end
+			return
+		end
+		local cam = workspace.CurrentCamera
+		if not cam then return end
+		local seen = {}
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr ~= LP and plr.Character then
+				local head = plr.Character:FindFirstChild("HitboxHead") or plr.Character:FindFirstChild("Head")
+				local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+				if head and hum and hum.Health > 0 then
+					local sp, on = cam:WorldToViewportPoint(head.Position)
+					if on and sp.Z > 0 then
+						seen[plr.Name] = true
+						local m = markers[plr.Name]
+						if not m then
+							m = Instance.new("Frame")
+							m.Name = plr.Name
+							m.AnchorPoint = Vector2.new(0.5, 0.5)
+							m.BorderSizePixel = 0
+							m.BackgroundColor3 = Color3.fromRGB(255, 50, 80)
+							m.Parent = hmGui
+							markers[plr.Name] = m
+						end
+						local sz = tonumber(S.HeadMarkerSize) or 6
+						m.Size = UDim2.fromOffset(sz, sz)
+						m.Position = UDim2.fromOffset(sp.X, sp.Y)
+						m.Visible = true
+						m.BackgroundColor3 = Color3.fromHSV((tick()*0.2)%1, 0.9, 1)
+					end
+				end
+			end
+		end
+		for name, m in pairs(markers) do
+			if not seen[name] then m.Visible = false end
+		end
+	end)
+
+	-- No default hitmarker - hide common hitmarker guis
+	RunService.Heartbeat:Connect(function()
+		if not S or not S.NoHitmarker then return end
+		if tick() - (S._nh or 0) < 0.4 then return end
+		S._nh = tick()
+		pcall(function()
+			local pg = LP:FindFirstChild("PlayerGui")
+			if not pg then return end
+			for _, o in ipairs(pg:GetDescendants()) do
+				local n = string.lower(o.Name)
+				if n:find("hitmarker") or n:find("hit_marker") then
+					if o:IsA("GuiObject") then o.Visible = false end
+				end
+			end
+		end)
+	end)
+
+	-- Always backstab: when melee + near enemy, aim from behind packet
+	RunService.Heartbeat:Connect(function()
+		if not S or not S.AlwaysBackstab then return end
+		if tick() - (S._bs or 0) < 0.08 then return end
+		S._bs = tick()
+		pcall(function()
+			if not getNearest or not encodeShot or not UseItem then return end
+			local head = getNearest(true)
+			if not head then return end
+			local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+			if not hrp then return end
+			if (hrp.Position - head.Position).Magnitude > 18 then return end
+			local behind = head.CFrame * CFrame.new(0, 0, 3)
+			local lf = getFighter and getFighter()
+			if not lf or not lf.EquippedItem then return end
+			local oid
+			pcall(function() oid = lf.EquippedItem:Get("ObjectID") end)
+			local se
+			pcall(function() se = EnumLibrary and EnumLibrary:ToEnum("StartShooting") end)
+			if oid and se then
+				local data = encodeShot(behind.Position, head.Position, head)
+				if data then UseItem:FireServer(oid, se, data, nil) end
+			end
+		end)
+	end)
+
+	-- Anti katana soft: if enemy has katana-like tool near, force equip range / noclip push
+	RunService.Heartbeat:Connect(function()
+		if not S or not S.AntiKatana then return end
+		if tick() - (S._ak or 0) < 0.2 then return end
+		S._ak = tick()
+		pcall(function()
+			local my = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+			if not my then return end
+			for _, plr in ipairs(Players:GetPlayers()) do
+				if plr ~= LP and plr.Character then
+					local tool = plr.Character:FindFirstChildOfClass("Tool")
+					local n = tool and string.lower(tool.Name) or ""
+					if n:find("katana") or n:find("sword") or n:find("melee") then
+						local ehrp = plr.Character:FindFirstChild("HumanoidRootPart")
+						if ehrp and (ehrp.Position - my.Position).Magnitude < 12 then
+							-- step back
+							my.CFrame = my.CFrame + (my.Position - ehrp.Position).Unit * 2
+						end
+					end
+				end
+			end
+		end)
+	end)
+
+	-- Subspace mines auto touch
+	RunService.Heartbeat:Connect(function()
+		if not S or not S.SubspaceAuto then return end
+		if tick() - (S._sm or 0) < 0.25 then return end
+		S._sm = tick()
+		local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+		if not hrp or not firetouchinterest then return end
+		pcall(function()
+			for _, o in ipairs(workspace:GetDescendants()) do
+				if o:IsA("BasePart") then
+					local n = string.lower(o.Name)
+					if n:find("mine") or n:find("subspace") or n:find("tripmine") then
+						if (o.Position - hrp.Position).Magnitude < 40 then
+							firetouchinterest(hrp, o, 0)
+							firetouchinterest(hrp, o, 1)
+						end
+					end
+				end
+			end
+		end)
+	end)
+
+	-- Hit log format via showHitUI
+	-- Silent indicator
+	local ind = Instance.new("ScreenGui")
+	ind.Name = "CG_SilentInd"
+	ind.IgnoreGuiInset = true
+	ind.Parent = CoreGui
+	local lab = Instance.new("TextLabel")
+	lab.Size = UDim2.fromOffset(120, 18)
+	lab.Position = UDim2.new(0.5, -60, 0.5, 40)
+	lab.BackgroundTransparency = 1
+	lab.Font = Enum.Font.Code
+	lab.TextSize = 12
+	lab.TextColor3 = Color3.fromRGB(255, 100, 150)
+	lab.Text = "SILENT"
+	lab.Visible = false
+	lab.Parent = ind
+	RunService.RenderStepped:Connect(function()
+		lab.Visible = S and S.ShowSilentInd and S.SilentAim and not S._silentBlock
+	end)
+
+	print("[extra-pack] ready")
 end)
