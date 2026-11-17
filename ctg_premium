@@ -163,7 +163,7 @@ if getgenv().__CG_HUB_LOADED then
 			getgenv().__CG_HUB_CLEANUP()
 		end
 	end)
-	task.wait(0.15)
+	task.wait(0.2)
 end
 getgenv().__CG_HUB_LOADED = true
 getgenv().__CG_HUB_CONNS = getgenv().__CG_HUB_CONNS or {}
@@ -222,6 +222,9 @@ end
 local S = _G.HUB
 S._systemsReady = false
 S._bootAt = tick()
+S._hbJobsEarly, S._rsJobsEarly = {}, {}
+function S._hbAdd(fn) S._hbJobsEarly[#S._hbJobsEarly+1] = fn end
+function S._rsAdd(fn) S._rsJobsEarly[#S._rsJobsEarly+1] = fn end
 S.PerfMode = true -- throttle all loops
 task.wait()
 
@@ -708,10 +711,42 @@ Library:Notify("Cutegirl_hub ready", 3)
 print("[UI] ready")
 S._bootAt = tick()
 S._systemsReady = false
-task.delay(0.5, function()
+-- FREEZE FIX: do not start combat loops for a few seconds, then only if needed
+task.delay(2, function()
 	S._systemsReady = true
-	print("[UI] systems unlocked (throttled)")
+	print("[UI] systems unlocked")
 end)
+
+-- ONE heartbeat + ONE render (prevents 50 connections freezing the game)
+do
+	local hbJobs, rsJobs = {}, {}
+	function S._hbAdd(fn)
+		if type(fn) == "function" then hbJobs[#hbJobs + 1] = fn end
+	end
+	function S._rsAdd(fn)
+		if type(fn) == "function" then rsJobs[#rsJobs + 1] = fn end
+	end
+	-- take jobs registered before dispatcher existed
+	for _, fn in ipairs(S._hbJobsEarly or {}) do hbJobs[#hbJobs+1] = fn end
+	for _, fn in ipairs(S._rsJobsEarly or {}) do rsJobs[#rsJobs+1] = fn end
+	S._hbJobsEarly, S._rsJobsEarly = {}, {}
+	local RunService = game:GetService("RunService")
+	RunService.Heartbeat:Connect(function(dt)
+		if S._systemsReady ~= true then return end
+		if (math.floor(tick() * 10) % 3) ~= 0 then return end
+		for i = 1, #hbJobs do
+			pcall(hbJobs[i], dt)
+		end
+	end)
+	RunService.RenderStepped:Connect(function(dt)
+		if S._systemsReady ~= true then return end
+		if (math.floor(tick() * 20) % 2) ~= 0 then return end
+		for i = 1, #rsJobs do
+			pcall(rsJobs[i], dt)
+		end
+	end)
+end
+
 
 -- Prevent overlay GUIs from blocking menu Play button
 local function makeClickThrough(gui)
@@ -926,10 +961,11 @@ task.spawn(function()
 	tracerFolder.Name = "CG_Tracers"
 	tracerFolder.Parent = workspace
 
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S then return end
 		local char = LP.Character
 		if not char then return end
@@ -991,9 +1027,10 @@ task.spawn(function()
 		end
 	end)
 
-	RunService.RenderStepped:Connect(function()
+	S._rsAdd(function()
 	if not S then return end
-	if (math.floor(tick() * 30) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 10) % 4) ~= 0 then return end
 		if not S then return end
 		local cam = workspace.CurrentCamera
 		if not cam then return end
@@ -1021,10 +1058,11 @@ task.spawn(function()
 
 	-- elim sound soft
 	local lastHP = {}
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or (not S.ElimSound and not S.HitFlash) then return end
 		for _, plr in ipairs(Players:GetPlayers()) do
 			if plr ~= LP and plr.Character then
@@ -1188,10 +1226,11 @@ task.spawn(function()
 			if _halmu.rageConn then _halmu.rageConn:Disconnect() _halmu.rageConn = nil end
 			if not on then return end
 			local cachedId = nil
-			_halmu.rageConn = RunService.Heartbeat:Connect(function()
+			_halmu.rageConn = S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 				if not _halmu.rageEnabled then return end
 				if not _halmu.currentTarget or not _halmu.currentTarget.Parent then return end
 				local head = _halmu.currentTarget
@@ -1244,10 +1283,11 @@ task.spawn(function()
 		end
 
 		-- Desync (above-head + slight offset so other rages miss body)
-		RunService.Heartbeat:Connect(function()
+		S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 			pcall(function()
 				local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
 				if _halmu.rageEnabled and _halmu.currentTarget and hrp then
@@ -1277,7 +1317,11 @@ task.spawn(function()
 		-- Target finder
 		task.spawn(function()
 			while true do
-				task.wait(0.1)
+				if not (_halmu.rageEnabled or _halmu.orbitEnabled) then
+					task.wait(0.5)
+				else
+					task.wait(0.2)
+				end
 				if _halmu.rageEnabled or _halmu.orbitEnabled then
 					local ref = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
 					local refPos = ref and ref.Position or Vector3.zero
@@ -1402,7 +1446,7 @@ local function showHitUI(text)
                 for i = 0, 1, 0.15 do
                     Box.BackgroundTransparency = 0.25 + i * 0.75
                     Label.TextTransparency = i
-                    task.wait(0.1)
+                    task.wait(0.2)
                 end
                 Box:Destroy()
             end)
@@ -2062,10 +2106,11 @@ task.spawn(function()
 end)
 
 local lastTrig = 0
-RunService.Heartbeat:Connect(function()
+S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 	if not S.Triggerbot then return end
 	if tick() - lastTrig < 0.1 then return end
 	local lf = getFighter()
@@ -2109,10 +2154,11 @@ local function startFarVoid()
 	if root then
 		farVoidSaved = root.CFrame
 	end
-	farVoidConn = RunService.Heartbeat:Connect(function()
+	farVoidConn = S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S.VoidSpam then
 			stopFarVoid()
 			return
@@ -2232,10 +2278,11 @@ task.spawn(function()
 end)
 
 local lastRapid = 0
-RunService.Heartbeat:Connect(function()
+S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 	if not S.RapidFire then return end
 	local lf = getFighter and getFighter() or nil
 	if not lf or not lf.EquippedItem then return end
@@ -2285,10 +2332,11 @@ RunService.Heartbeat:Connect(function()
 	end)
 end)
 
-RunService.Heartbeat:Connect(function()
+S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 	if not S.WalkSpeed then return end
 	local char = LP.Character
 	if not char then return end
@@ -2382,9 +2430,10 @@ local function worldToPos(pos)
 	return Vector2.new(sp.X, sp.Y), on, sp.Z
 end
 
-RunService.RenderStepped:Connect(function()
+S._rsAdd(function()
 	if not S then return end
-	if (math.floor(tick() * 30) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 10) % 4) ~= 0 then return end
 	if not S.ESP then
 		for plr, _ in pairs(espDrawings) do
 			espClearPlr(plr)
@@ -2531,13 +2580,16 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
-RunService.Stepped:Connect(function()
+S._hbAdd(function()
 	if not S.Noclip then return end
 	local char = LP.Character
 	if not char then return end
-	for _, p in ipairs(char:GetDescendants()) do
-		if p:IsA("BasePart") then
-			p.CanCollide = false
+	for _, p in ipairs(char:GetChildren()) do
+		if p:IsA("BasePart") then p.CanCollide = false
+		elseif p:IsA("Model") or p:IsA("Folder") or p:IsA("Accessory") then
+			for _, p2 in ipairs(p:GetChildren()) do
+				if p2:IsA("BasePart") then p2.CanCollide = false end
+			end
 		end
 	end
 end)
@@ -2599,10 +2651,11 @@ local function startFly()
 		hum.PlatformStand = true; hum.JumpPower = 0; hum.JumpHeight = 0; hum.Jump = false
 	end)
 
-	flyConn = RunService.Heartbeat:Connect(function()
+	flyConn = S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S.Fly then
 			cleanupFly()
 			return
@@ -2679,7 +2732,7 @@ end
 task.spawn(function()
 	local was = false
 	while true do
-		task.wait(0.15)
+		task.wait(0.2)
 		if S.Fly and not was then
 			startFly()
 		elseif (not S.Fly) and was then
@@ -2719,9 +2772,10 @@ task.spawn(function()
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(1, 0)
 	corner.Parent = ring
-	RunService.RenderStepped:Connect(function()
+	S._rsAdd(function()
 	if not S then return end
-	if (math.floor(tick() * 30) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 10) % 4) ~= 0 then return end
 		if not S.ShowFOV then
 			ring.Visible = false
 			return
@@ -2773,7 +2827,7 @@ function startFreecam()
 	local cam = Workspace.CurrentCamera
 	freecam.pos = cam.CFrame
 	cam.CameraType = Enum.CameraType.Scriptable
-	freecam.conn = RunService.RenderStepped:Connect(function(dt)
+	freecam.conn = S._rsAdd(function(dt)
 		if not S.Freecam then stopFreecam() return end
 		local cam2 = Workspace.CurrentCamera
 		cam2.CameraType = Enum.CameraType.Scriptable
@@ -2804,7 +2858,7 @@ end
 task.spawn(function()
 	local wasFC = false
 	while true do
-		task.wait(0.1)
+		task.wait(0.2)
 		if S.Freecam and not wasFC then
 			pcall(function() if startFreecam then startFreecam() end end)
 		elseif (not S.Freecam) and wasFC then
@@ -2828,10 +2882,11 @@ task.spawn(function()
 	end
 end)
 
-RunService.Heartbeat:Connect(function()
+S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 	if not S.AutoReload then return end
 	pcall(function()
 		local lf = getFighter and getFighter() or nil
@@ -2863,10 +2918,11 @@ RunService.Heartbeat:Connect(function()
 	end)
 end)
 
-RunService.Heartbeat:Connect(function()
+S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 	if not S.Desync then return end
 	pcall(function()
 		local char = LP.Character
@@ -2883,10 +2939,11 @@ RunService.Heartbeat:Connect(function()
 end)
 
 local lastHP = {}
-RunService.Heartbeat:Connect(function()
+S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
     if not S.HitNotify then return end
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LP and plr.Character then
@@ -3047,7 +3104,7 @@ task.spawn(function()
 
 	local pulse = 0
 	local gap, baseLen = 3, (S.CrosshairSize or 11)
-	RunService.RenderStepped:Connect(function(dt)
+	S._rsAdd(function(dt)
 		local on = S.CustomCrosshair == true
 		root.Visible = on
 		brand.Visible = on
@@ -3234,9 +3291,10 @@ task.spawn(function()
 	local verL = mk("premium", Color3.fromRGB(255, 120, 170), 7)
 
 	local fps, frames, t0 = 0, 0, tick()
-	RunService.RenderStepped:Connect(function()
+	S._rsAdd(function()
 	if not S then return end
-	if (math.floor(tick() * 30) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 10) % 4) ~= 0 then return end
 		frames += 1
 		if tick() - t0 >= 0.4 then
 			fps = math.floor(frames / (tick() - t0) + 0.5)
@@ -3252,9 +3310,10 @@ task.spawn(function()
 	local snapF = Instance.new("Folder")
 	snapF.Name = "CG_Snap"
 	snapF.Parent = CoreGui
-	RunService.RenderStepped:Connect(function()
+	S._rsAdd(function()
 	if not S then return end
-	if (math.floor(tick() * 30) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 10) % 4) ~= 0 then return end
 		if not S.ESP_Tracers then
 			for _, c in ipairs(snapF:GetChildren()) do c:Destroy() end
 			return
@@ -3300,10 +3359,11 @@ task.spawn(function()
 	end)
 
 	-- Anti aim jitter
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S.AntiAim then return end
 		local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
 		if not hrp then return end
@@ -3311,10 +3371,11 @@ task.spawn(function()
 	end)
 
 	-- Speed boost in combat
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S.SpeedBoost then return end
 		local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
 		if hum then
@@ -3324,10 +3385,11 @@ task.spawn(function()
 	end)
 
 	-- Auto equip
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S.AutoEquip then return end
 		if tick() - (S._ae or 0) < 0.8 then return end
 		S._ae = tick()
@@ -3340,9 +3402,10 @@ task.spawn(function()
 	end)
 
 	-- Zoom unlock
-	RunService.RenderStepped:Connect(function()
+	S._rsAdd(function()
 	if not S then return end
-	if (math.floor(tick() * 30) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 10) % 4) ~= 0 then return end
 		if not S.ZoomUnlock then return end
 		local cam = workspace.CurrentCamera
 		if cam and cam.FieldOfView < (S.ZoomVal or 120) - 1 then
@@ -3387,10 +3450,11 @@ task.spawn(function()
 			end
 		end)
 	end
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S then return end
 		if not (S.AutoCollect or S.AutoHeal or S.AutoAmmoPick) then return end
 		local interval = tonumber(S.CollectInterval) or 0.25
@@ -3416,10 +3480,11 @@ task.spawn(function()
 	end)
 
 	-- Melee reach soft: when near target with melee, fire more
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S.MeleeReach then return end
 		if tick() - (S._mr or 0) < 0.1 then return end
 		S._mr = tick()
@@ -3453,9 +3518,10 @@ task.spawn(function()
 	local RunService = game:GetService("RunService")
 	local UIS = game:GetService("UserInputService")
 	local LP = Players.LocalPlayer
-	RunService.RenderStepped:Connect(function()
+	S._rsAdd(function()
 	if not S then return end
-	if (math.floor(tick() * 30) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 10) % 4) ~= 0 then return end
 		if not S or not S.ThirdPerson then
 			if S and S._tp2 then
 				local cam = workspace.CurrentCamera
@@ -3494,6 +3560,8 @@ task.spawn(function()
 end)
 
 
+
+
 -- ========== MAX pack 3 runtime ==========
 task.spawn(function()
 	local Players = game:GetService("Players")
@@ -3521,10 +3589,11 @@ task.spawn(function()
 	end)
 
 	-- gravity / high jump / no fall
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S then return end
 		local char = LP.Character
 		if not char then return end
@@ -3593,10 +3662,11 @@ task.spawn(function()
 
 	-- kill say / kill effect on HP drop to 0
 	local lastHP2 = {}
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S then return end
 		if not (S.KillSay or S.KillEffect or S.SoundOnKill) then return end
 		for _, plr in ipairs(Players:GetPlayers()) do
@@ -3649,10 +3719,11 @@ task.spawn(function()
 
 	-- streamer mode: hide display names partially via ESP text override flag
 	-- HideNames: try hide billboard
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or not S.HideNames then return end
 		pcall(function()
 			local char = LP.Character
@@ -3670,9 +3741,10 @@ task.spawn(function()
 	end)
 
 	-- rainbow ESP color pulse stored
-	RunService.RenderStepped:Connect(function()
+	S._rsAdd(function()
 	if not S then return end
-	if (math.floor(tick() * 30) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 10) % 4) ~= 0 then return end
 		if not S or not S.RainbowESP then return end
 		S._rainbow = Color3.fromHSV((tick() * 0.2) % 1, 0.9, 1)
 	end)
@@ -3712,7 +3784,7 @@ task.spawn(function()
 	-- add parallel updater that finds HubCrosshair and spins faster via attribute
 	local LP = game:GetService("Players").LocalPlayer
 	local RunService = game:GetService("RunService")
-	RunService.RenderStepped:Connect(function(dt)
+	S._rsAdd(function(dt)
 		if not S or not S.CustomCrosshair then return end
 		local pg = LP:FindFirstChild("PlayerGui")
 		local sg = pg and pg:FindFirstChild("HubCrosshair")
@@ -3729,10 +3801,11 @@ end)
 task.spawn(function()
 	local RunService = game:GetService("RunService")
 	local last = 0
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or not S.RageBot then return end
 		if tick() - last < 0.05 then return end
 		last = tick()
@@ -3768,10 +3841,11 @@ task.spawn(function()
 	getgenv().CG_IsFriend = isFriend
 
 	-- day/night
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S then return end
 		if S.AlwaysDay then Lighting.ClockTime = 14 end
 		if S.AlwaysNight then Lighting.ClockTime = 0 end
@@ -3783,10 +3857,11 @@ task.spawn(function()
 	end)
 
 	-- TP walk
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or not S.TPWalk then return end
 		local char = LP.Character
 		local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -3811,10 +3886,11 @@ task.spawn(function()
 	end)
 
 	-- Sit spam
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or not S.SitSpam then return end
 		if tick() - (S._sit or 0) < 0.2 then return end
 		S._sit = tick()
@@ -3823,10 +3899,11 @@ task.spawn(function()
 	end)
 
 	-- Knife aura
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or not S.KnifeAura then return end
 		if tick() - (S._ka or 0) < 0.08 then return end
 		S._ka = tick()
@@ -3873,9 +3950,10 @@ task.spawn(function()
 
 	-- China hat
 	local hat = nil
-	RunService.RenderStepped:Connect(function()
+	S._rsAdd(function()
 	if not S then return end
-	if (math.floor(tick() * 30) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 10) % 4) ~= 0 then return end
 		if not S then return end
 		if not S.ChinaHat then
 			if hat then hat:Destroy(); hat = nil end
@@ -3903,10 +3981,11 @@ task.spawn(function()
 
 	-- Local trail
 	local trailParts = {}
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or not S.Trail then return end
 		if tick() - (S._tr or 0) < 0.12 then return end
 		S._tr = tick()
@@ -3927,10 +4006,11 @@ task.spawn(function()
 	end)
 
 	-- Bright players (throttled)
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or not S.BrightPlayers then return end
 		if tick() - (S._bp or 0) < 1 then return end
 		S._bp = tick()
@@ -3947,10 +4027,11 @@ task.spawn(function()
 	end)
 
 	-- Soft xray disabled heavy scan (use only nearby GetPartBoundsInRadius)
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or not S.Xray then return end
 		if tick() - (S._xr or 0) < 1.2 then return end
 		S._xr = tick()
@@ -3975,9 +4056,10 @@ task.spawn(function()
 	arrowGui.IgnoreGuiInset = true
 	arrowGui.ResetOnSpawn = false
 	arrowGui.Parent = CoreGui
-	RunService.RenderStepped:Connect(function()
+	S._rsAdd(function()
 	if not S then return end
-	if (math.floor(tick() * 30) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 10) % 4) ~= 0 then return end
 		if not S or not S.ArrowESP then
 			for _, c in ipairs(arrowGui:GetChildren()) do c:Destroy() end
 			return
@@ -4037,9 +4119,10 @@ task.spawn(function()
 	rframe.Visible = false
 	rframe.Active = false
 	rframe.Parent = radar
-	RunService.RenderStepped:Connect(function()
+	S._rsAdd(function()
 	if not S then return end
-	if (math.floor(tick() * 30) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 10) % 4) ~= 0 then return end
 		rframe.Visible = S and S.RadarESP or false
 		if not rframe.Visible then return end
 		for _, c in ipairs(rframe:GetChildren()) do if c:IsA("Frame") and c.Name ~= "Center" then c:Destroy() end end
@@ -4176,10 +4259,11 @@ task.spawn(function()
 	-- enhance silent heartbeat: skip if silent gate fails
 	-- we hook by adding parallel that zeros silent when not ok - existing silent checks S.SilentAim
 	-- Override: temporarily disable via flag
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or not S.SilentAim then return end
 		if getgenv().CG_SilentGateOk and not getgenv().CG_SilentGateOk() then
 			S._silentBlock = true
@@ -4193,10 +4277,11 @@ task.spawn(function()
 	-- We'll monkey by requiring silent only when not _silentBlock - add to silent heartbeat via replacing string earlier?
 
 	-- Infinite double jumps via MaxDoubleJumps
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or not S.InfDoubleJumps then return end
 		pcall(function()
 			local char = LP.Character
@@ -4211,10 +4296,11 @@ task.spawn(function()
 	end)
 
 	-- Auto loadout equip
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or not S.AutoLoadout then return end
 		if tick() - (S._lo or 0) < 1 then return end
 		S._lo = tick()
@@ -4233,9 +4319,10 @@ task.spawn(function()
 	hmGui.ResetOnSpawn = false
 	hmGui.Parent = CoreGui
 	local markers = {}
-	RunService.RenderStepped:Connect(function()
+	S._rsAdd(function()
 	if not S then return end
-	if (math.floor(tick() * 30) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 10) % 4) ~= 0 then return end
 		if not S or not S.HeadMarker then
 			for _, m in pairs(markers) do m.Visible = false end
 			return
@@ -4276,10 +4363,11 @@ task.spawn(function()
 	end)
 
 	-- No default hitmarker - hide common hitmarker guis
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or not S.NoHitmarker then return end
 		if tick() - (S._nh or 0) < 0.4 then return end
 		S._nh = tick()
@@ -4296,10 +4384,11 @@ task.spawn(function()
 	end)
 
 	-- Always backstab: when melee + near enemy, aim from behind packet
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or not S.AlwaysBackstab then return end
 		if tick() - (S._bs or 0) < 0.08 then return end
 		S._bs = tick()
@@ -4325,10 +4414,11 @@ task.spawn(function()
 	end)
 
 	-- Anti katana soft: if enemy has katana-like tool near, force equip range / noclip push
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or not S.AntiKatana then return end
 		if tick() - (S._ak or 0) < 0.2 then return end
 		S._ak = tick()
@@ -4352,10 +4442,11 @@ task.spawn(function()
 	end)
 
 	-- Subspace mines auto touch
-	RunService.Heartbeat:Connect(function()
+	S._hbAdd(function()
 	if not S then return end
 	-- ~15hz: skip frames together (stops freeze after boot)
-	if (math.floor(tick() * 15) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 8) % 4) ~= 0 then return end
 		if not S or not S.SubspaceAuto then return end
 		if tick() - (S._sm or 0) < 0.25 then return end
 		S._sm = tick()
@@ -4391,9 +4482,10 @@ task.spawn(function()
 	lab.Text = "SILENT"
 	lab.Visible = false
 	lab.Parent = ind
-	RunService.RenderStepped:Connect(function()
+	S._rsAdd(function()
 	if not S then return end
-	if (math.floor(tick() * 30) % 2) ~= 0 then return end
+	if S._systemsReady ~= true then return end
+	if (math.floor(tick() * 10) % 4) ~= 0 then return end
 		lab.Visible = S and S.ShowSilentInd and S.SilentAim and not S._silentBlock
 	end)
 
