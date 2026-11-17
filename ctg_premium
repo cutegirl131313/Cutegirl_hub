@@ -1,4 +1,3 @@
-
 --[[ EXACT Lunara_UI_Only + Standard RageBot (Emote Removed) ]]
 _G.HUB = _G.HUB or {
 	Aimbot = false, AimSmooth = 0.3, AimFOV = 300, SilentAim = false, Triggerbot = false,
@@ -234,7 +233,41 @@ local function CG_ready()
 end
 
 
--- ========== Cutegirl_hub Custom UI (no Linoria) ==========
+-- ========== Cutegirl_hub Custom UI ==========
+
+-- wipe leftover library UIs from previous runs
+pcall(function()
+	local CoreGui = game:GetService("CoreGui")
+	local LP = game:GetService("Players").LocalPlayer
+	local names = {
+		"Linoria", "LinoriaHub", "LinoriaWindow", "Library", "Obsidian",
+		"Rayfield", "Kavo", "Orion", "Fluent", "WindUI", "Rivals",
+		"RivalsWallbang", "Cutegirl", "wave", "Wave", "VK", "nervous",
+		"ScreenGui", -- too broad skip
+	}
+	local function wipe(parent)
+		if not parent then return end
+		for _, c in ipairs(parent:GetChildren()) do
+			local n = string.lower(c.Name)
+			if c:IsA("ScreenGui") then
+				if n:find("linoria") or n:find("obsidian") or n:find("rayfield")
+					or n:find("kavo") or n:find("orion") or n:find("fluent")
+					or n:find("window") and n:find("hub")
+					or n:find("theme") and n:find("manager")
+					or c.Name == "Library" then
+					pcall(function() c:Destroy() end)
+				end
+			end
+		end
+	end
+	wipe(CoreGui)
+	pcall(function() wipe(LP:FindFirstChild("PlayerGui")) end)
+	-- gethui
+	pcall(function()
+		if gethui then wipe(gethui()) end
+	end)
+end)
+
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
@@ -814,7 +847,7 @@ local function makeClickThrough(gui)
 		end
 		for _, d in ipairs(gui:GetDescendants()) do
 			if d:IsA("GuiObject") then
-				-- keep only real buttons interactive inside Linoria later
+				-- keep only real buttons interactive inside hub later
 				if not (d:IsA("TextButton") or d:IsA("ImageButton") or d:IsA("TextBox")) then
 					d.Active = false
 					d.Selectable = false
@@ -1618,25 +1651,9 @@ end)
 
 local unlockAllExecuted = false
 function runLunaraUnlockAll()
-	if unlockAllExecuted then
-		pcall(function() Library:Notify("Unlock All already on", 2) end)
-		return
-	end
-	unlockAllExecuted = true
-	task.spawn(function()
-		local ok, err = pcall(function()
-			loadstring(game:HttpGet("https://pastefy.app/6ElsMLeb/raw", true))()
-		end)
-		if ok then
-			pcall(function() Library:Notify("Lunara Unlock All on", 2) end)
-			print("[hub] Lunara Unlock All loaded")
-		else
-			unlockAllExecuted = false
-			S.UnlockAll = false
-			warn("[hub] Unlock All fail:", err)
-			pcall(function() Library:Notify("Unlock All fail", 2) end)
-		end
-	end)
+	-- no external UI scripts
+	pcall(function() Library:Notify("Unlock All (local stubs)", 2) end)
+	print("[hub] Unlock All local only (no remote UI)")
 end
 
 pcall(function()
