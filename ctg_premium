@@ -4141,7 +4141,7 @@ task.spawn(function()
 	cen.BackgroundColor3 = Color3.fromRGB(120,255,120)
 	cen.Parent = rframe
 
-	print("[pack4] ready")
+	
 end)
 
 
@@ -4475,5 +4475,5 @@ task.spawn(function()
 		lab.Visible = S and S.ShowSilentInd and S.SilentAim and not S._silentBlock
 	end)
 
-	print("[extra-pack] ready")
+	
 end)
