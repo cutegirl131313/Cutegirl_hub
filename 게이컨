@@ -1,0 +1,189 @@
+local runService = game:GetService("RunService")
+local userInputService = game:GetService("UserInputService")
+local players = game:GetService("Players")
+
+local localPlayer = players.LocalPlayer
+localPlayer:WaitForChild("PlayerGui"):FindFirstChild("GayConGodTier")
+
+_G.VoidToggled = false
+_G.GodModeToggled = false
+
+local vector = Vector3.new(999999, math.random(900000, 999999), -999999)
+
+local gayConGodTier = Instance.new("ScreenGui")
+gayConGodTier.Name = "GayConGodTier"
+gayConGodTier.ResetOnSpawn = false
+gayConGodTier.Parent = localPlayer:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 220, 0, 115)
+frame.Position = UDim2.new(0.5, -110, 0, 140)
+frame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+frame.BorderSizePixel = 0
+frame.Parent = gayConGodTier
+
+local v1, position, position2
+
+frame.InputBegan:Connect(function(input)
+  if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+    v1 = true
+    position = input.Position
+    position2 = frame.Position
+
+    input.Changed:Connect(function()
+      if input.UserInputState == Enum.UserInputState.End then
+        v1 = false
+      end
+    end)
+  end
+end)
+
+local v2
+
+frame.InputChanged:Connect(function(input2)
+  if input2.UserInputType == Enum.UserInputType.MouseMovement
+    or input2.UserInputType == Enum.UserInputType.Touch then
+    v2 = input2
+  end
+end)
+
+userInputService.InputChanged:Connect(function(input3)
+  if input3 == v2 and v1 then
+    local v3 = input3.Position - position
+
+    frame.Position = UDim2.new(
+      position2.X.Scale, position2.X.Offset + v3.X, position2.Y.Scale, position2.Y.Offset + v3.Y
+    )
+  end
+end)
+
+local frame2 = Instance.new("Frame")
+frame2.Size = UDim2.new(1, 0, 0, 3)
+frame2.BackgroundColor3 = Color3.fromRGB(180, 0, 255)
+frame2.Parent = frame
+
+local textLabel = Instance.new("TextLabel")
+textLabel.Size = UDim2.new(1, -20, 0, 25)
+textLabel.Position = UDim2.new(0, 10, 0, 5)
+textLabel.BackgroundTransparency = 1
+textLabel.Text = "핵쓰는 게이컨"
+textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+textLabel.TextSize = 14
+textLabel.Font = Enum.Font.SourceSansBold
+textLabel.TextXAlignment = Enum.TextXAlignment.Left
+textLabel.Parent = frame
+
+local function f1(p1, position3, parent)
+  local textButton = Instance.new("TextButton")
+  textButton.Size = UDim2.new(1, -20, 0, 24)
+  textButton.Position = position3
+  textButton.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+  textButton.Text = p1 .. ": OFF"
+  textButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+  textButton.TextSize = 12
+  textButton.Font = Enum.Font.Code
+  textButton.Parent = parent
+
+  Instance.new("UICorner", textButton).CornerRadius = UDim.new(0, 4)
+  return textButton
+end
+
+local v4 = f1("VOID LOCK", UDim2.new(0, 10, 0, 35), frame)
+local v5 = f1("COORD + X (무적)", UDim2.new(0, 10, 0, 75), frame)
+
+runService.RenderStepped:Connect(function()
+  local character = localPlayer.Character
+  local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
+  local humanoid = character and character:FindFirstChild("Humanoid")
+  local voidToggled
+
+  if not humanoidRootPart then
+    return
+  elseif _G.GodModeToggled then
+    humanoidRootPart.Velocity = Vector3.new(
+      math.random(-500, -100), math.random(-500, -100), math.random(-500, -100)
+    )
+
+    if not userInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+      humanoidRootPart.CFrame = CFrame.new(vector + Vector3.new(
+        math.random(-50, 50), math.random(-50, 50), math.random(-50, 50)
+      ))
+
+      if humanoid then
+        humanoid.PlatformStand = true
+      end
+
+      return
+    end
+
+    if humanoid then
+      humanoid.PlatformStand = false
+    end
+
+    voidToggled = _G.VoidToggled
+
+    if voidToggled and not _G.GodModeToggled then
+      if humanoid then
+        humanoid.PlatformStand = false
+      end
+
+      humanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+
+      humanoidRootPart.CFrame = CFrame.new(
+        humanoidRootPart.Position.X, -21817291795, humanoidRootPart.Position.Z
+      )
+    end
+
+    return
+  else
+    voidToggled = _G.VoidToggled
+
+    if voidToggled and not _G.GodModeToggled then
+      if humanoid then
+        humanoid.PlatformStand = false
+      end
+
+      humanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+
+      humanoidRootPart.CFrame = CFrame.new(
+        humanoidRootPart.Position.X, -21817291795, humanoidRootPart.Position.Z
+      )
+    end
+
+    return
+  end
+end)
+
+local function f2(p2, p3, p4)
+  p2.MouseButton1Click:Connect(function()
+    _G[p4] = not _G[p4]
+
+    if _G[p4] then
+      p2.Text = p3 .. ": ON"
+      p2.BackgroundColor3 = Color3.fromRGB(0, 180, 90)
+    else
+      p2.Text = p3 .. ": OFF"
+      p2.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+
+      local character2 = localPlayer.Character
+      local humanoidRootPart2 = character2 and character2:FindFirstChild("HumanoidRootPart")
+      local humanoid2 = character2 and character2:FindFirstChild("Humanoid")
+
+      if humanoid2 then
+        humanoid2.PlatformStand = false
+      end
+
+      if not _G.VoidToggled and not _G.GodModeToggled then
+        if humanoidRootPart2 then
+          humanoidRootPart2.CFrame = CFrame.new(
+            humanoidRootPart2.Position.X, 70, humanoidRootPart2.Position.Z
+          )
+        end
+      end
+    end
+  end)
+end
+
+f2(v4, "VOID LOCK", "VoidToggled")
+f2(v5, "COORD + X (무적)", "GodModeToggled")
