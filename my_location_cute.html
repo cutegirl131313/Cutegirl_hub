@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>CuteGirl</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      font-family: "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
+      background: #0a0a0c;
+      color: #eee;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .wrap {
+      width: 100%;
+      max-width: 360px;
+      background: #121216;
+      border: 1px solid #2c2c34;
+    }
+    .bar { height: 2px; background: #ff2d55; }
+    .box { padding: 32px 24px 28px; text-align: center; }
+    .logo { font-size: 22px; font-weight: 700; margin-bottom: 18px; }
+    .logo span { color: #ff2d55; }
+    .msg { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+    .sub { font-size: 12px; color: #777; margin-bottom: 24px; line-height: 1.5; }
+    .btn {
+      width: 100%;
+      border: 0;
+      background: #ff2d55;
+      color: #fff;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 14px;
+      cursor: pointer;
+    }
+    .btn:hover { background: #e0264a; }
+    .btn:disabled { opacity: 0.55; cursor: wait; }
+
+    .mask {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 50;
+    }
+    .mask.show { display: flex; }
+    .modal {
+      width: 100%;
+      max-width: 300px;
+      background: #1a1a20;
+      border: 1px solid #333;
+      padding: 22px 18px 16px;
+      text-align: center;
+    }
+    .modal h2 {
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.45;
+      margin-bottom: 18px;
+    }
+    .modal-actions { display: flex; gap: 8px; }
+    .modal-actions button {
+      flex: 1;
+      border: 1px solid #3a3a44;
+      background: #121216;
+      color: #eee;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 11px 0;
+      cursor: pointer;
+    }
+    .modal-actions .yes {
+      background: #ff2d55;
+      border-color: #ff2d55;
+      color: #fff;
+    }
+
+    #fail, #panel { display: none; margin-top: 18px; text-align: left; }
+    #fail.show, #panel.show { display: block; }
+    #fail {
+      padding: 14px;
+      border: 1px solid #4a1c1c;
+      background: #160e0e;
+      color: #f87171;
+      font-size: 14px;
+      font-weight: 600;
+      text-align: center;
+    }
+    #panel { border: 1px solid #2c2c34; background: #0e0e12; }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 11px 14px;
+      border-bottom: 1px solid #222228;
+      font-size: 13px;
+    }
+    .row:last-child { border-bottom: 0; }
+    .k { color: #888; flex-shrink: 0; }
+    .v { color: #fff; font-weight: 600; text-align: right; word-break: break-all; font-variant-numeric: tabular-nums; }
+    .warn {
+      padding: 12px 14px;
+      font-size: 12px;
+      line-height: 1.45;
+      color: #fbbf24;
+      background: #1a1608;
+      border-top: 1px solid #222228;
+    }
+    .map {
+      display: block;
+      text-align: center;
+      padding: 12px;
+      color: #ff2d55;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      border-top: 1px solid #222228;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="bar"></div>
+    <div class="box">
+      <div class="logo">Cute<span>Girl</span></div>
+      <p class="msg">CuteGirl Script</p>
+      <p class="sub">버튼을 눌러 진행하세요.<br>위·경도는 <b style="color:#bbb">Chrome/Safari</b>에서 위치 허용 시 표시됩니다.</p>
+      <button class="btn" type="button" id="open">Get Script</button>
+      <div id="fail">스크 얻기를 실패하였습니다</div>
+      <div id="panel"></div>
+    </div>
+  </div>
+
+  <div class="mask" id="mask">
+    <div class="modal">
+      <h2>스크 얻기를 허용하시겠습니까?</h2>
+      <div class="modal-actions">
+        <button type="button" class="yes" id="yes">Yes</button>
+        <button type="button" class="no" id="no">No</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var openBtn = document.getElementById('open');
+      var mask = document.getElementById('mask');
+      var yes = document.getElementById('yes');
+      var no = document.getElementById('no');
+      var fail = document.getElementById('fail');
+      var panel = document.getElementById('panel');
+
+      function row(k, v) {
+        return '<div class="row"><span class="k">' + k + '</span><span class="v">' + (v || '—') + '</span></div>';
+      }
+
+      function isSecureOk() {
+        // geolocation needs secure context except localhost
+        if (typeof window.isSecureContext === 'boolean') return window.isSecureContext;
+        return location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      }
+
+      openBtn.addEventListener('click', function () {
+        fail.classList.remove('show');
+        panel.classList.remove('show');
+        mask.classList.add('show');
+      });
+
+      no.addEventListener('click', function () {
+        mask.classList.remove('show');
+        panel.classList.remove('show');
+        fail.classList.add('show');
+      });
+
+      function getGPS() {
+        return new Promise(function (resolve) {
+          if (!navigator.geolocation) {
+            resolve({ error: '이 앱/브라우저는 GPS를 지원하지 않습니다.' });
+            return;
+          }
+          if (!isSecureOk()) {
+            resolve({
+              error: '파일 미리보기(file://)에서는 GPS가 막힙니다. Chrome으로 https 페이지에서 열거나, GitHub Pages에 올려서 여세요.'
+            });
+            return;
+          }
+
+          var done = false;
+          function finish(r) {
+            if (done) return;
+            done = true;
+            resolve(r);
+          }
+
+          navigator.geolocation.getCurrentPosition(
+            function (pos) {
+              finish({
+                lat: pos.coords.latitude.toFixed(6),
+                lon: pos.coords.longitude.toFixed(6),
+                acc: '약 ' + Math.round(pos.coords.accuracy) + ' m'
+              });
+            },
+            function (e) {
+              // retry once with low accuracy
+              navigator.geolocation.getCurrentPosition(
+                function (pos) {
+                  finish({
+                    lat: pos.coords.latitude.toFixed(6),
+                    lon: pos.coords.longitude.toFixed(6),
+                    acc: '약 ' + Math.round(pos.coords.accuracy) + ' m'
+                  });
+                },
+                function (e2) {
+                  var msg = '위치 권한이 거부되었거나 사용할 수 없습니다.';
+                  if (e2.code === 1) msg = '위치 권한 거부됨. 브라우저 주소창 자물쇠 → 위치 → 허용 후 다시 시도.';
+                  if (e2.code === 2) msg = '위치 정보를 가져올 수 없습니다. GPS/네트워크를 확인하세요.';
+                  if (e2.code === 3) msg = '위치 요청 시간 초과. 다시 눌러보세요.';
+                  finish({ error: msg });
+                },
+                { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+              );
+            },
+            { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+          );
+        });
+      }
+
+      yes.addEventListener('click', function () {
+        mask.classList.remove('show');
+        fail.classList.remove('show');
+        panel.classList.remove('show');
+        openBtn.disabled = true;
+        openBtn.textContent = '...';
+
+        var data = { ip: '—', lat: '—', lon: '—', acc: '—', note: '' };
+
+        var ipP = fetch('https://ipapi.co/json/')
+          .then(function (r) { return r.json(); })
+          .then(function (d) { if (d && d.ip) data.ip = d.ip; })
+          .catch(function () {
+            return fetch('https://ipwho.is/')
+              .then(function (r) { return r.json(); })
+              .then(function (d) { if (d && d.ip) data.ip = d.ip; })
+              .catch(function () {});
+          });
+
+        var gpsP = getGPS().then(function (g) {
+          if (g.error) {
+            data.note = g.error;
+            return;
+          }
+          data.lat = g.lat;
+          data.lon = g.lon;
+          data.acc = g.acc;
+        });
+
+        Promise.all([ipP, gpsP]).then(function () {
+          var html =
+            row('IP', data.ip) +
+            row('위도', data.lat) +
+            row('경도', data.lon) +
+            row('정확도', data.acc);
+
+          if (data.lat !== '—' && data.lon !== '—') {
+            html += '<a class="map" href="https://www.google.com/maps?q=' + data.lat + ',' + data.lon + '" target="_blank" rel="noopener">지도에서 보기</a>';
+          } else if (data.note) {
+            html += '<div class="warn">' + data.note + '</div>';
+          }
+
+          panel.innerHTML = html;
+          panel.classList.add('show');
+          openBtn.disabled = false;
+          openBtn.textContent = 'Get Script';
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
