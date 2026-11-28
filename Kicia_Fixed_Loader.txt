@@ -1,0 +1,102 @@
+--[[ Kicia fully fixed - robust loader ]]
+-- Original URL is ~1.7MB. Many executors timeout on game:HttpGet for large files.
+-- This loader tries request/http first, then HttpGet, with clear errors.
+
+local URL = "https://raw.githubusercontent.com/cutegirl131313/Cutegirl_hub/refs/heads/main/kicia%20fully%20fixed.lua.txt"
+
+local function notify(msg)
+    warn("[KiciaLoader] " .. tostring(msg))
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Kicia Loader",
+            Text = tostring(msg),
+            Duration = 5,
+        })
+    end)
+end
+
+-- unload previous if any
+pcall(function()
+    if getgenv().KiciaRebuild and getgenv().KiciaRebuild.Unload then
+        getgenv().KiciaRebuild.Unload()
+    end
+end)
+
+local function httpGet(url)
+    -- 1) syn.request / http.request / request (better for large body)
+    local req = (syn and syn.request)
+        or (http and http.request)
+        or (fluxus and fluxus.request)
+        or request
+        or http_request
+
+    if type(req) == "function" then
+        local ok, res = pcall(req, {
+            Url = url,
+            Method = "GET",
+            Headers = { ["User-Agent"] = "Mozilla/5.0" },
+        })
+        if ok and res then
+            local body = res.Body or res.body
+            local code = res.StatusCode or res.Status or res.statusCode
+            if body and #body > 100 and (not code or code == 200) then
+                return body
+            end
+            if body and #body > 100 then
+                return body
+            end
+        end
+    end
+
+    -- 2) game:HttpGet
+    local ok2, body2 = pcall(function()
+        return game:HttpGet(url)
+    end)
+    if ok2 and type(body2) == "string" and #body2 > 100 then
+        return body2
+    end
+
+    -- 3) HttpGetAsync if present
+    local ok3, body3 = pcall(function()
+        return game:HttpGetAsync(url)
+    end)
+    if ok3 and type(body3) == "string" and #body3 > 100 then
+        return body3
+    end
+
+    return nil, (body2 or body3 or "HttpGet failed / empty body")
+end
+
+notify("Downloading script (~1.7MB)...")
+
+local src, err = httpGet(URL)
+if not src then
+    notify("Download failed: " .. tostring(err))
+    notify("Try another executor or check internet")
+    return
+end
+
+if #src < 10000 then
+    notify("Body too small (" .. #src .. " bytes) — possible block/404")
+    return
+end
+
+notify("Downloaded " .. tostring(#src) .. " bytes. Compiling...")
+
+local fn, compileErr = loadstring(src)
+if not fn then
+    notify("Compile error: " .. tostring(compileErr))
+    warn(compileErr)
+    return
+end
+
+notify("Running...")
+
+local okRun, runErr = pcall(fn)
+if not okRun then
+    notify("Runtime error: " .. tostring(runErr))
+    warn(runErr)
+    return
+end
+
+notify("Loaded OK")
